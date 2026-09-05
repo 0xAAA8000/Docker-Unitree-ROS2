@@ -25,7 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # --- 操作系 ---
     ros-humble-teleop-twist-keyboard \
     ros-humble-rqt-robot-steering \
-    # --- Point-LIO (point_lio_unilidar) のビルド依存 ---
+    # --- Point-LIO (point_lio) のビルド依存 ---
+    #     python3-dev は laserMapping.cpp が Python.h を include するため必要
     ros-humble-pcl-conversions \
     ros-humble-pcl-ros \
     ros-humble-tf2-ros \
@@ -33,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcl-dev \
     libeigen3-dev \
     libomp-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ros2_ws

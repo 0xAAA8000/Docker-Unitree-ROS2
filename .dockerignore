@@ -3,5 +3,5 @@ install/
 log/
 .git/
 launch-docker.sh
-src/point_lio_unilidar/PCD/*.pcd
-src/point_lio_unilidar/Log/*.txt
+src/point_lio_ros2/PCD/*.pcd
+src/point_lio_ros2/Log/*.csv
