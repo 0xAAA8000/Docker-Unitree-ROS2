@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<package format="3">
+  <name>point_lio_unilidar</name>
+  <version>0.1.0</version>
+
+  <description>
+    Point-LIO for Unitree 4D LiDAR, ported to ROS 2 (ament_cmake).
+    Point-LIO is a robust and high-bandwidth LiDAR-inertial odometry based on
+    point-by-point state estimation.
+  </description>
+
+  <maintainer email="lukelbmeng@gmail.com">Lingbo Meng</maintainer>
+  <license>GPL-2.0</license>
+  <author email="lukelbmeng@gmail.com">Lingbo Meng</author>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>pcl_conversions</depend>
+  <depend>eigen</depend>
+  <depend>libpcl-all-dev</depend>
+
+  <exec_depend>ros2launch</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
