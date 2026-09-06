@@ -2,6 +2,10 @@
 **TL;DR:** Unitree L2 LiDARでROS2を動かすためのDockerイメージ
 Gazeboシミュレーションと Point-LIO (`point_lio`) にも対応しています。
 
+> ROS 2 のコマンドの使い方は **[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md)**
+> にまとめてあります。`ros2 topic` / `ros2 launch` / `ros2 bag` / `colcon` の使い方と、
+> このリポジトリでの定番コマンド、トラブルシュート早見表つきです。
+
 ## Usage
 ```
 docker pull ghcr.io/0xaaa8000/docker-unitree-ros2:latest
@@ -80,6 +84,10 @@ L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
   (`odom_header_frame_id` / `odom_child_frame_id` パラメータで変更可能)
 
 パラメータは `src/point_lio_ros2/config/*.yaml` にあります。
+
+動作確認や、うまく動かないときの切り分けは
+[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md#14-トラブルシュート早見表)
+を参照してください。
 
 ## Gazebo で Point-LIO を動かす場合の注意
 
