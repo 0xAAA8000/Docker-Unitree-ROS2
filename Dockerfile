@@ -48,8 +48,11 @@ RUN . /opt/ros/humble/setup.sh && \
     colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release && \
     rm -rf build/ log/
 
+RUN groupadd -g 110 host_render && \
+    usermod -aG host_render root
+
 # Gazebo Classic の標準モデルを見つけられるようにする
-ENV GAZEBO_MODEL_PATH=/usr/share/gazebo-11/models:${GAZEBO_MODEL_PATH}
+ARG GAZEBO_MODEL_PATH="/usr/share/gazebo-11/models"
 
 ENTRYPOINT ["/ros2_ws/entrypoint.sh"]
 CMD ["bash"]

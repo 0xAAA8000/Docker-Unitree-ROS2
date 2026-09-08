@@ -21,6 +21,7 @@ docker run -it --rm \
     "${GPU_ARGS[@]}" \
     --network host \
     --ipc host \
+    --device=/dev/dri:/dev/dri \
     -e DISPLAY="$DISPLAY" \
     -e QT_X11_NO_MITSHM=1 \
     -e XDG_RUNTIME_DIR=/tmp/runtime-root \
