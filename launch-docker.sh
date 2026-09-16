@@ -2,7 +2,7 @@
 # Gazebo / RViz の GUI をホストの X サーバに表示しつつコンテナを起動する。
 set -e
 
-IMAGE="${IMAGE:-ghcr.io/0xaaa8000/docker-unitree-ros2:latest}"
+IMAGE="${IMAGE:-docker-unitree-ros2:latest}"
 
 # コンテナからホストの X サーバへ接続できるようにする
 xhost +local:root >/dev/null 2>&1 || true

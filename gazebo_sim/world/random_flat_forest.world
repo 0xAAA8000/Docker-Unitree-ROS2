@@ -1,0 +1,334 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="random_flat_forest">
+    <include><uri>model://sun</uri></include>
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+	    </plane>
+	  </geometry>
+	  <material>
+	    <script>
+	      <uri>file://media/materials/scripts/gazebo.material</uri>
+	      <name>Gazebo/Gray</name>
+            </script>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_0</name>
+      <pose>-13.51 -7.71 0 0 0 5.04</pose>
+      <scale>1.23 1.25 1.12</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_1</name>
+      <pose>-24.78 6.34 0 0 0 1.88</pose>
+      <scale>1.35 1.37 0.87</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_2</name>
+      <pose>19.35 8.01 0 0 0 3.23</pose>
+      <scale>0.89 0.91 1.25</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_3</name>
+      <pose>19.20 33.19 0 0 0 5.14</pose>
+      <scale>0.92 0.87 0.82</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_4</name>
+      <pose>-29.42 4.98 0 0 0 0.75</pose>
+      <scale>0.77 0.84 0.96</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_5</name>
+      <pose>-0.89 -32.46 0 0 0 5.67</pose>
+      <scale>1.21 1.23 1.05</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_6</name>
+      <pose>-0.16 10.77 0 0 0 0.33</pose>
+      <scale>1.37 1.37 0.93</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_7</name>
+      <pose>4.36 -38.07 0 0 0 1.05</pose>
+      <scale>1.06 0.99 1.08</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_8</name>
+      <pose>-25.10 -22.32 0 0 0 2.25</pose>
+      <scale>0.87 0.81 1.04</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_9</name>
+      <pose>27.62 17.61 0 0 0 5.02</pose>
+      <scale>0.81 0.81 1.26</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_10</name>
+      <pose>23.88 34.47 0 0 0 3.42</pose>
+      <scale>0.88 0.95 0.93</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_11</name>
+      <pose>17.20 -20.56 0 0 0 1.85</pose>
+      <scale>0.97 0.95 1.13</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_12</name>
+      <pose>3.68 -31.79 0 0 0 4.96</pose>
+      <scale>1.26 1.31 0.93</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_13</name>
+      <pose>-16.41 30.86 0 0 0 2.23</pose>
+      <scale>0.86 0.82 0.95</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_14</name>
+      <pose>-24.46 -16.38 0 0 0 3.61</pose>
+      <scale>0.98 0.92 1.00</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_15</name>
+      <pose>-22.76 -29.67 0 0 0 1.61</pose>
+      <scale>1.25 1.30 1.08</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_16</name>
+      <pose>38.80 -17.72 0 0 0 0.63</pose>
+      <scale>1.10 1.11 1.24</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_17</name>
+      <pose>8.87 1.92 0 0 0 2.27</pose>
+      <scale>0.91 0.99 1.25</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_18</name>
+      <pose>14.38 -0.62 0 0 0 2.61</pose>
+      <scale>1.17 1.24 1.24</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_19</name>
+      <pose>0.50 -2.16 0 0 0 4.43</pose>
+      <scale>1.30 1.24 0.92</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_20</name>
+      <pose>38.22 -38.81 0 0 0 1.80</pose>
+      <scale>1.13 1.05 1.02</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_21</name>
+      <pose>-14.42 1.18 0 0 0 1.92</pose>
+      <scale>1.39 1.34 1.15</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_22</name>
+      <pose>19.10 36.14 0 0 0 4.28</pose>
+      <scale>0.74 0.67 0.98</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_23</name>
+      <pose>-15.08 18.31 0 0 0 0.38</pose>
+      <scale>1.05 1.00 1.23</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_24</name>
+      <pose>28.53 -1.63 0 0 0 0.66</pose>
+      <scale>0.97 0.87 1.00</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_25</name>
+      <pose>37.87 25.42 0 0 0 4.59</pose>
+      <scale>1.19 1.16 0.85</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_26</name>
+      <pose>18.49 39.95 0 0 0 4.11</pose>
+      <scale>1.31 1.20 1.05</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_27</name>
+      <pose>-19.40 18.57 0 0 0 1.04</pose>
+      <scale>1.35 1.25 1.09</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_28</name>
+      <pose>-16.82 17.38 0 0 0 3.96</pose>
+      <scale>1.29 1.35 0.98</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_29</name>
+      <pose>-16.09 -7.59 0 0 0 0.08</pose>
+      <scale>1.35 1.28 1.04</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_30</name>
+      <pose>-0.72 -21.98 0 0 0 1.36</pose>
+      <scale>1.02 0.96 1.13</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_31</name>
+      <pose>15.87 19.92 0 0 0 3.09</pose>
+      <scale>1.19 1.21 1.21</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_32</name>
+      <pose>0.30 11.68 0 0 0 5.81</pose>
+      <scale>1.20 1.10 0.90</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_33</name>
+      <pose>39.59 -30.47 0 0 0 2.57</pose>
+      <scale>1.06 1.12 0.95</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_34</name>
+      <pose>-31.09 -15.97 0 0 0 1.63</pose>
+      <scale>1.04 1.07 1.09</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_35</name>
+      <pose>25.36 18.76 0 0 0 6.20</pose>
+      <scale>1.05 0.99 0.85</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_36</name>
+      <pose>30.19 -4.37 0 0 0 3.54</pose>
+      <scale>1.40 1.33 1.30</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_37</name>
+      <pose>-39.72 34.04 0 0 0 0.86</pose>
+      <scale>0.77 0.71 1.07</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_38</name>
+      <pose>-18.12 -21.85 0 0 0 5.39</pose>
+      <scale>1.23 1.23 0.95</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_39</name>
+      <pose>-13.81 30.88 0 0 0 5.88</pose>
+      <scale>0.70 0.66 1.00</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_40</name>
+      <pose>38.41 7.34 0 0 0 3.74</pose>
+      <scale>0.99 1.04 1.11</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_41</name>
+      <pose>32.33 4.26 0 0 0 0.05</pose>
+      <scale>1.06 1.08 1.17</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_42</name>
+      <pose>20.45 -21.13 0 0 0 2.66</pose>
+      <scale>1.03 0.93 1.23</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_43</name>
+      <pose>-33.18 14.05 0 0 0 0.85</pose>
+      <scale>1.24 1.36 0.87</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_44</name>
+      <pose>-16.60 24.58 0 0 0 2.95</pose>
+      <scale>0.97 0.98 1.01</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_45</name>
+      <pose>36.96 19.90 0 0 0 1.76</pose>
+      <scale>0.82 0.83 1.07</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_46</name>
+      <pose>-4.21 -10.61 0 0 0 1.09</pose>
+      <scale>0.86 0.86 0.88</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_47</name>
+      <pose>-38.36 -27.20 0 0 0 0.39</pose>
+      <scale>1.33 1.33 1.16</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_48</name>
+      <pose>36.96 -37.28 0 0 0 0.00</pose>
+      <scale>1.31 1.29 1.20</scale>
+    </include>
+    <include>
+      <uri>model://oak_tree</uri>
+      <name>tree_49</name>
+      <pose>2.95 -25.21 0 0 0 2.29</pose>
+      <scale>0.99 0.92 0.93</scale>
+    </include>
+  </world>
+</sdf>

@@ -1,0 +1,2 @@
+modelはネットから取得　　
+oak_tree, pine_treeはconfigファイル内のnameタグがフォルダ名と違っていたので修正した。
