@@ -1,4 +1,6 @@
+import glob
 import random
+import os
 
 # ワールドのヘッダー部分（Heightmap指定を含む）
 sdf_header = """<?xml version="1.0" ?>
@@ -34,12 +36,14 @@ sdf_header = """<?xml version="1.0" ?>
     </model>
 """
 
+num_trees = len(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "randomTree/tree_model/*")))
+
 sdf_body = ""
-tree_types = ["model://oak_tree"]
+tree_types = [f"model://random_tree_{i}" for i in range(num_trees)]
 
 # 配置設定
 grid_spacing = 5.0  # 碁盤の目の間隔 (5m)
-std_dev = 0.5       # 標準偏差 (50cm = 0.5m)
+std_dev = 0.3       # 標準偏差 (50cm = 0.5m)
 range_min = -40
 range_max = 40
 
@@ -59,9 +63,9 @@ for x_grid in range(range_min, range_max + 1, int(grid_spacing)):
         yaw = random.uniform(0, 6.28)
 
         # 形状（スケール）を微変形させて個体差をつける
-        scale_x = random.uniform(0.7, 1.4)
+        scale_x = random.uniform(0.9, 1.2)
         scale_y = scale_x * random.uniform(0.9, 1.1)
-        scale_z = random.uniform(0.8, 1.3)
+        scale_z = random.uniform(0.9, 1.2)
 
         sdf_body += f"""
     <include>
