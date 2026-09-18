@@ -1,5 +1,5 @@
-# Unitree LiDAR with ROS2 docker image
-**TL;DR:** Unitree L2 LiDARでROS2を動かすためのDockerイメージ
+# ROS2 LiDAR Simulation (Gazebo) and Run ROS2 with Unitree L1 Lidar
+**TL;DR:** Unitree L1 LiDARでROS2を動かすためのDockerイメージ
 Gazeboシミュレーションと Point-LIO (`point_lio`) にも対応しています。
 
 > ROS 2 のコマンドの使い方は **[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md)**
@@ -15,9 +15,20 @@ GUI（Gazebo / RViz）を使う場合は同梱の起動スクリプトを使っ�
 `DISPLAY` と `/tmp/.X11-unix` をコンテナへ渡し、NVIDIA runtime と `/dev/ttyUSB0` が
 あるときだけそれらを追加します。
 
+ROS2を起動する
 ```bash
 ./launch-docker.sh                # bash が起動する
 ./launch-docker.sh ros2 launch unitree_lidar_ros2 launch.py
+```
+
+Gazebo用のDockerを起動する
+```bash
+./gazebo_sim/launch-gazebo-image.sh
+```
+Docker内で
+```bash
+cd gazebo_sim
+./launch-flat-kurifarm.sh
 ```
 
 ## 含まれるパッケージ
