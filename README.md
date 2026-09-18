@@ -15,13 +15,13 @@ GUI（Gazebo / RViz）を使う場合は同梱の起動スクリプトを使っ�
 `DISPLAY` と `/tmp/.X11-unix` をコンテナへ渡し、NVIDIA runtime と `/dev/ttyUSB0` が
 あるときだけそれらを追加します。
 
-ROS2を起動する
+**ROS2を起動する**
 ```bash
 ./launch-docker.sh                # bash が起動する
 ./launch-docker.sh ros2 launch unitree_lidar_ros2 launch.py
 ```
 
-Gazebo用のDockerを起動する
+**Gazebo用のDockerを起動する**
 ```bash
 ./gazebo_sim/launch-gazebo-image.sh
 ```
