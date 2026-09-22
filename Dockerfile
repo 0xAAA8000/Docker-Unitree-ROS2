@@ -33,7 +33,8 @@ FROM base AS l2
 ENV ROS2_TARGET=l2
 COPY --from=common-build /opt/common_ws /opt/common_ws
 COPY src/l2 /ros2_ws/src
-RUN ... (l1 と同じ)
+RUN . /opt/ros/humble/setup.sh && . /opt/common_ws/install/setup.sh && \
+    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release && rm -rf build log
 
 # ========== sim ==========
 FROM base AS sim
@@ -43,4 +44,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=common-build /opt/common_ws /opt/common_ws
 COPY src/sim /ros2_ws/src
-RUN ... (同上)
+RUN . /opt/ros/humble/setup.sh && . /opt/common_ws/install/setup.sh && \
+    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release && rm -rf build log
