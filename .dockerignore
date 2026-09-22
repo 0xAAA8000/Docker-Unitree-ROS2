@@ -2,8 +2,8 @@ build/
 install/
 log/
 .git/
-access.sh
-download-frozen-image-v2.sh
-launch-docker.sh
-src/point_lio_ros2/PCD/*.pcd
-src/point_lio_ros2/Log/*.csv
+scripts/access.sh
+scripts/download-frozen-image-v2.sh
+scripts/launch-docker.sh
+src/common/point_lio_ros2/PCD/*.pcd
+src/common/point_lio_ros2/Log/*.csv
