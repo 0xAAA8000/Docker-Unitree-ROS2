@@ -89,7 +89,7 @@ def main():
 		print("addon added")
 	bpy.context.view_layer.update()
 
-	gazebo_model_dir = "/home/okamoto/projects/ros2_ws/gazebo_sim/randomTree/tree_model"
+	gazebo_model_dir = f"{os.path.dirname(__file__)}/model"
 	os.makedirs(gazebo_model_dir, exist_ok=True)
 
 	for i in range(5):

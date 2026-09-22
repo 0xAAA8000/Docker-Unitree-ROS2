@@ -1,64 +1,49 @@
-# ROS2 LiDAR Simulation (Gazebo) and Run ROS2 with Unitree L1 Lidar
-**TL;DR:** Unitree L1 LiDARでROS2を動かすためのDockerイメージ
-Gazeboシミュレーションと Point-LIO (`point_lio`) にも対応しています。
+# ROS2 LiDAR Docker Image
+**TL;DR:**  
+1. Unitree L1/L2 LiDARでROS2, PointLioを動かすためのDockerイメージ
+2. ROS2上でGazebo(Ign)のシミュレーションをするためのDockerイメージ
 
 > ROS 2 のコマンドの使い方は **[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md)**
 > にまとめてあります。`ros2 topic` / `ros2 launch` / `ros2 bag` / `colcon` の使い方と、
 > このリポジトリでの定番コマンド、トラブルシュート早見表つきです。
 
 ## Usage
-```
-docker pull ghcr.io/0xaaa8000/docker-unitree-ros2:latest
-```
+### 1. イメージの取得  
 
-GUI（Gazebo / RViz）を使う場合は同梱の起動スクリプトを使ってください。
-`DISPLAY` と `/tmp/.X11-unix` をコンテナへ渡し、NVIDIA runtime と `/dev/ttyUSB0` が
-あるときだけそれらを追加します。
-
-**ROS2を起動する**
+**L1**
 ```bash
-./launch-docker.sh                # bash が起動する
-./launch-docker.sh ros2 launch unitree_lidar_ros2 launch.py
+docker pull ghcr.io/0xaaa8000/docker-unitree-ros2/l1:latest
 ```
-
-**Gazebo用のDockerを起動する**
+**l2**
 ```bash
-./gazebo_sim/launch-gazebo-image.sh
+docker pull ghcr.io/0xaaa8000/docker-unitree-ros2/l2:latest
 ```
-Docker内で
+**sim**
 ```bash
-cd gazebo_sim
-./launch-flat-kurifarm.sh
+docker pull ghcr.io/0xaaa8000/docker-unitree-ros2/sim:latest
+```
+### 2. 起動
+`--target`でバージョンを選択(l1, l2, sim)  
+`--dev`で作業ディレクトリ(src/{l1, l2, sim})をマウント
+```bash
+./scripts/launch-docker.sh --target=sim --dev
 ```
 
 ## 含まれるパッケージ
-
-### ワークスペース (`src/`)
-
+### 共通部
 | パッケージ | 内容 |
 | --- | --- |
-| `unitree_lidar_ros2` | Unitree L1 / L2 LiDAR の ROS 2 ドライバ (`src/unilidar_sdk/`) |
 | `point_lio` | Point-LIO (LiDAR-IMU オドメトリ)。[dfloreaa/point_lio_ros2](https://github.com/dfloreaa/point_lio_ros2) を `src/point_lio_ros2/` に取り込んだもの |
 
-### ベースイメージに追加した apt パッケージ
+### L1, L2用
+| パッケージ | 内容 |
+| --- | --- |
+| `unitree_lidar_ros2` | Unitree L1 / L2 LiDAR の ROS 2 ドライバ (l1:`src/unilidar_sdk/`, l2:`src/unilidar_sdk2`) |
 
-`osrf/ros:humble-desktop-full` には Ignition Gazebo Fortress (`ros_ign_*`) しか
-含まれていないため、Gazebo Classic 11 系を明示的に追加しています。
-
-* Gazebo Classic: `ros-humble-gazebo-ros-pkgs`, `ros-humble-gazebo-ros2-control`,
-  `ros-humble-gazebo-dev`
-* ロボットモデル / 制御: `ros-humble-ros2-control`, `ros-humble-ros2-controllers`,
-  `ros-humble-controller-manager`, `ros-humble-xacro`,
-  `ros-humble-joint-state-publisher(-gui)`, `ros-humble-robot-state-publisher`
-* シミュレーション用 3D LiDAR: `ros-humble-velodyne-simulator`,
-  `ros-humble-velodyne-gazebo-plugins`, `ros-humble-velodyne-description`
-* 操作: `ros-humble-teleop-twist-keyboard`, `ros-humble-rqt-robot-steering`
-* Point-LIO のビルド依存: `ros-humble-pcl-conversions`, `ros-humble-pcl-ros`,
-  `ros-humble-tf2-ros`, `ros-humble-tf2-eigen`, `libpcl-dev`, `libeigen3-dev`,
-  `libomp-dev`, `python3-dev` (`laserMapping.cpp` が `Python.h` を include するため)
-
-Ignition Fortress 側 (`ros_ign_gazebo` / `ros_ign_bridge`) はベースイメージのまま
-使えるので、Classic と Fortress のどちらでも動かせます。
+### Gazebo Sim用
+| パッケージ | 内容 |
+| --- | --- |
+| ` ` ||
 
 ## Point-LIO を動かす
 
@@ -100,19 +85,6 @@ L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
 [ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md#14-トラブルシュート早見表)
 を参照してください。
 
-## Gazebo で Point-LIO を動かす場合の注意
-
-Point-LIO は「点ごとのタイムスタンプ」を前提にしたアルゴリズムです。
-
-* Gazebo Classic の `gazebo_ros_ray_sensor` が出す `PointCloud2` には
-  `ring` も `time` フィールドも入りません。そのままでは Point-LIO に入力できません。
-* `velodyne_gazebo_plugins` の `GazeboRosVelodyneLaser` は `ring` と `intensity` を
-  出力します。この場合 `preprocess.lidar_type: 2` (Velodyne) を指定してください。
-  `time` フィールドが無いときは、Point-LIO 側が方位角から点ごとの時刻オフセットを
-  推定するフォールバック経路に入ります (`Preprocess::velodyne_handler`)。
-* シミュレーションで回すときは IMU プラグイン (`gazebo_ros_imu_sensor`) を
-  `mapping.imu_time_inte` に合わせた周期で回し、launch には
-  `use_sim_time:=true` を付けてください。
 
 ## Point-LIO のバージョンについて
 

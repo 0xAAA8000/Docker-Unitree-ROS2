@@ -2,6 +2,7 @@
 <sdf version="1.6">
   <world name="random_flat_forest">
     <include><uri>model://sun</uri></include>
+    
     <model name="ground_plane">
       <static>true</static>
       <link name="link">
