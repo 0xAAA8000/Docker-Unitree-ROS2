@@ -6,7 +6,10 @@ import os
 sdf_header = """<?xml version="1.0" ?>
 <sdf version="1.6">
   <world name="random_flat_forest">
-    <include><uri>model://sun</uri></include>
+    <scene>
+      <shadows>false</shadows>
+    </scene>
+    <include><uri>model://my_sun</uri></include>
     <model name="ground_plane">
       <static>true</static>
       <link name="link">
@@ -36,7 +39,7 @@ sdf_header = """<?xml version="1.0" ?>
     </model>
 """
 
-num_trees = len(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "randomTree/tree_model/*")))
+num_trees = len(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "model/random_tree_*")))
 
 sdf_body = ""
 tree_types = [f"model://random_tree_{i}" for i in range(num_trees)]
@@ -81,7 +84,8 @@ sdf_footer = """
 </sdf>
 """
 
-with open("world/flat_kurifarm.world", "w") as f:
+world_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "world/flat_kurifarm.world")
+with open(world_file_path, "w") as f:
     f.write(sdf_header + sdf_body + sdf_footer)
 
 print(f"flat_kurifarm.world を生成しました。（合計 {tree_count} 本の木を配置）")

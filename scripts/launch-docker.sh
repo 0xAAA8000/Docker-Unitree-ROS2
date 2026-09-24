@@ -2,9 +2,10 @@
 # Gazebo / RViz の GUI をホストの X サーバに表示しつつコンテナを起動する。
 set -e
 
-IMAGE="docker-unitree-ros"
+IMAGE="ghcr.io/0xaaa8000/docker-unitree-ros2"
 TARGET="sim"
 DEV_MODE=false
+DOCKER_CMD=()
 
 for arg in "$@"; do
     case "$arg" in
@@ -17,6 +18,8 @@ for arg in "$@"; do
         --dev)
             DEV_MODE=true
             ;;
+        *)
+            DOCKER_CMD+=($arg)
     esac
 done
 
@@ -39,22 +42,33 @@ xhost +local:root >/dev/null 2>&1 || true
 DEVICE_ARGS=()
 if [ -e /dev/ttyUSB0 ]; then
     DEVICE_ARGS+=(--device=/dev/ttyUSB0)
+    echo "[ info ] USB LiDAR Enable"
 fi
 
 GPU_ARGS=()
 if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia; then
+    GPU_ARGS+=(--runtime=nvidia)
     GPU_ARGS+=(--gpus all)
+    GPU_ARGS+=(-e NVIDIA_VISIBLE_DEVICES=all)
+    GPU_ARGS+=(-e NVIDIA_DRIVER_CAPABILITIES=all)
+    echo "[ info ] GPU(s) Enabled"
+fi
+
+DRI_ARGS=()
+if [ -d "/dev/dri" ]; then
+    DRI_ARGS+=(--device=/dev/dri:/dev/dri)
+    echo "[ info ] Driver Mounted"
 fi
 
 docker run -it --rm \
     "${GPU_ARGS[@]}" \
     --network host \
     --ipc host \
-    --device=/dev/dri:/dev/dri \
-    -e DISPLAY="$DISPLAY" \
+    "${DRI_ARGS[@]}" \
+    -e DISPLAY=$DISPLAY \
     -e QT_X11_NO_MITSHM=1 \
     -e XDG_RUNTIME_DIR=/tmp/runtime-root \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-    "${MOUNT_OPTION}" \
+    ${MOUNT_OPTION} \
     "${DEVICE_ARGS[@]}" \
-    "$IMAGE" "$@"
+    $IMAGE "${DOCKER_ARG[@]}"

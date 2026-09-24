@@ -1,7 +1,12 @@
 import bpy
 
 if "add_curve_sapling" not in bpy.context.preferences.addons:
-    bpy.ops.preferences.addon_enable(module="add_curve_sapling")
+    bpy.ops.preferences.addon_enable(module="add_curve_sapling") # For Blender 4.1 or older
+    #bpy.context.preferences.system.use_online_access = True
+    #bpy.ops.extensions.package_install(
+    #    pkg_id="sapling_tree_gen",
+    #    repo_index=0
+    #)
     print("addon added")
 
 # オブジェクトモードであることを確認
