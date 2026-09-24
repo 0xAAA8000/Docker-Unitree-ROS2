@@ -4,12 +4,33 @@ import os
 
 # ワールドのヘッダー部分（Heightmap指定を含む）
 sdf_header = """<?xml version="1.0" ?>
-<sdf version="1.6">
+<sdf version="1.8">
   <world name="random_flat_forest">
+    <plugin
+      filename="libignition-gazebo-physics-system.so"
+      name="ignition::gazebo::systems::Physics">
+    </plugin>
+    <plugin
+      filename="libignition-gazebo-user-commands-system.so"
+      name="ignition::gazebo::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="libignition-gazebo-scene-broadcaster-system.so"
+      name="ignition::gazebo::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="libignition-gazebo-sensors-system.so"
+      name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
     <scene>
       <shadows>false</shadows>
     </scene>
     <include><uri>model://my_sun</uri></include>
+    <include>
+      <uri>model://unitree_lidar</uri>
+      <pose> 2.5 2.5 0.5 0 0 0</pose>
+    </include>
     <model name="ground_plane">
       <static>true</static>
       <link name="link">

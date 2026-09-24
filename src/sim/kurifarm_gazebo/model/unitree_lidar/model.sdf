@@ -61,8 +61,8 @@
           </noise>
         </ray>
         <always_on>true</always_on>
-        <visualize>true</visualize>
-        <topic>/unilidar/pointcloud</topic>
+        <visualize>false</visualize>
+        <topic>unilidar/pointcloud</topic>
       </sensor>
     </link>
   </model>

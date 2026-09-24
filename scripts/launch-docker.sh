@@ -20,6 +20,7 @@ for arg in "$@"; do
             ;;
         *)
             DOCKER_CMD+=($arg)
+            ;;
     esac
 done
 
@@ -71,4 +72,4 @@ docker run -it --rm \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     ${MOUNT_OPTION} \
     "${DEVICE_ARGS[@]}" \
-    $IMAGE "${DOCKER_ARG[@]}"
+    $IMAGE "${DOCKER_CMD[@]}"
