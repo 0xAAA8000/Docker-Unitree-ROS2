@@ -9,6 +9,7 @@ data_files_list = [
     ('share/' + package_name, ['package.xml']),
     (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+    (os.path.join('share', package_name, 'urdf'), glob('urdf/*')),
     (os.path.join('share', package_name, 'world'), glob('world/*.world'))
 ]
 

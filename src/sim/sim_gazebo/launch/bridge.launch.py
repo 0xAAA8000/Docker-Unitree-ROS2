@@ -44,10 +44,38 @@ def generate_launch_description():
         output='screen'
     )
 
+    urdf_path = os.path.join(pkg_sim_gazebo, 'urdf/four_wheel_car.urdf')
+    with open(urdf_path, 'r') as infp:
+        robot_desc = infp.read()
+    robot_desc = robot_desc.replace('CONTROLLER_YAML_PATH', pkg_sim_gazebo)
+
+    # ros2 controlにURDFを渡す
+    robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[{'robot_description': robot_desc}]
+    )
+
+    spawn_robot = Node(
+        package='ros_gz_sim',
+        executable='create',
+        arguments=[
+            '-string', robot_desc,
+            '-name', 'four_wheel_car',
+            '-x', '2.0',
+            '-y', '0.0',
+            '-z', '0.2'
+        ],
+        output='screen'
+    )
+
     # 4. まとめて起動
     return LaunchDescription([
         world_arg,
         gazebo,
-        bridge
+        bridge,
+        robot_state_publisher,
+        spawn_robot
     ])
 

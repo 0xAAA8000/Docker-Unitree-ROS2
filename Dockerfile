@@ -42,6 +42,7 @@ ENV ROS2_TARGET=sim \
     IGN_GAZEBO_RESOURCE_PATH=/ros2_ws/src/sim_gazebo/model
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-ros-gz ros-humble-sdformat-urdf ros-humble-ign-ros2-control \
+    ros-humble-ros2-controllers ros-humble-ros2-control ros-humble-ackermann-steering-controller \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=common-build /opt/common_ws /opt/common_ws
 COPY src/sim /ros2_ws/src

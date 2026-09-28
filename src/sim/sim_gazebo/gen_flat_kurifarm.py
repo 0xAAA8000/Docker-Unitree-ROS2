@@ -18,10 +18,16 @@ sdf_header = """<?xml version="1.0" ?>
       filename="libignition-gazebo-scene-broadcaster-system.so"
       name="ignition::gazebo::systems::SceneBroadcaster">
     </plugin>
+    <!-- LiDAR Plugin -->
     <plugin
       filename="libignition-gazebo-sensors-system.so"
       name="ignition::gazebo::systems::Sensors">
       <render_engine>ogre2</render_engine>
+    </plugin>
+    <!-- IMU Plugin -->
+    <plugin
+      filename="libignition-gazebo-imu-system.so"
+      name="ignition::gazebo::systems::Imu">
     </plugin>
     <scene>
       <shadows>false</shadows>
