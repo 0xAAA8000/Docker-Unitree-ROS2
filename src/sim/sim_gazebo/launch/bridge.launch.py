@@ -1,7 +1,8 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -38,9 +39,7 @@ def generate_launch_description():
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        parameters=[{
-            'config_file': config_file,
-        }],
+        parameters=[{'config_file': config_file, 'use_sim_time': True}],
         output='screen'
     )
 
@@ -54,7 +53,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        parameters=[{'robot_description': robot_desc}]
+        parameters=[{'robot_description': robot_desc, 'use_sim_time': True}]
     )
 
     spawn_robot = Node(
@@ -63,10 +62,43 @@ def generate_launch_description():
         arguments=[
             '-string', robot_desc,
             '-name', 'four_wheel_car',
-            '-x', '2.0',
-            '-y', '0.0',
+            '-x', '0.0',
+            '-y', '2.0',
             '-z', '0.2'
         ],
+        output='screen'
+    )
+
+    joint_state_broadcaster_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['joint_state_broadcaster',
+               '--controller-manager', '/controller_manager'],
+        output='screen',
+    )
+
+    ackermann_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['ackermann_steering_controller',
+               '--controller-manager', '/controller_manager'],
+        output='screen',
+    )
+
+    static_tf_pub = Node( # 名前変換
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            '0', '0', '0', '0', '0', '0', # xyz rpy 位置差
+            'lidar_link',                 # 親フレーム
+            'four_wheel_car/base_link/gpu_lidar' # 子フレーム
+        ]
+    )
+
+    add_timestamp_field = Node(
+        package='sim_gazebo',
+        executable='add_time_field.py',
+        name='pointcloud_time_adder',
         output='screen'
     )
 
@@ -76,6 +108,15 @@ def generate_launch_description():
         gazebo,
         bridge,
         robot_state_publisher,
-        spawn_robot
+        spawn_robot,
+        # spawn 完了後に順番に起動する（先に走らせると controller_manager がまだ無い）
+        RegisterEventHandler(OnProcessExit(
+            target_action=spawn_robot,
+            on_exit=[joint_state_broadcaster_spawner])),
+        RegisterEventHandler(OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[ackermann_spawner])),
+        static_tf_pub,
+        add_timestamp_field,
     ])
 

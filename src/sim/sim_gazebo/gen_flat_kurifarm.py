@@ -33,10 +33,6 @@ sdf_header = """<?xml version="1.0" ?>
       <shadows>false</shadows>
     </scene>
     <include><uri>model://my_sun</uri></include>
-    <include>
-      <uri>model://unitree_lidar</uri>
-      <pose> 2.5 2.5 0.5 0 0 0</pose>
-    </include>
     <model name="ground_plane">
       <static>true</static>
       <link name="link">

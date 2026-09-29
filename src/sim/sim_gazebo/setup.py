@@ -10,7 +10,10 @@ data_files_list = [
     (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     (os.path.join('share', package_name, 'urdf'), glob('urdf/*')),
-    (os.path.join('share', package_name, 'world'), glob('world/*.world'))
+    (os.path.join('share', package_name, 'world'), glob('world/*.world')),
+    # (インストール先, インストール元)
+    # launch.pyのNode関数は実行ファイルを探す。実行ファイルはlibにまとめられる
+    (os.path.join('lib', package_name), glob('src/*.py'))
 ]
 
 setup(
@@ -31,6 +34,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            # launchで指定する実行ファイル名 = package名.script名:main関数名
+            'add_time_field = sim_gazebo.add_time_field:main',
         ],
     },
 )

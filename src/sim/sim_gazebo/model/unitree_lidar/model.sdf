@@ -32,26 +32,26 @@
       <!-- GPU LiDAR センサー -->
       <sensor name="unilidar" type="gpu_lidar">
         <pose>0 0 0 0 0 0</pose>
-        <update_rate>11</update_rate>
+        <update_rate>11</update_rate> <!-- 更新間隔 -->
         <ray>
           <scan>
             <horizontal>
               <samples>360</samples>
               <resolution>1</resolution>
-              <min_angle>-3.14159265</min_angle>
+              <min_angle>-3.14159265</min_angle> <!-- 水平FOV -->
               <max_angle>3.14159265</max_angle>
             </horizontal>
             <vertical>
-              <samples>90</samples>
+              <samples>18</samples>
               <resolution>1</resolution>
               <!-- Unitree L1/L2 の超広視野角（±45度） -->
-              <min_angle>-0.785398</min_angle>
+              <min_angle>-0.785398</min_angle> <!-- 垂直FOV -->
               <max_angle>0.785398</max_angle>
             </vertical>
           </scan>
           <range>
             <min>0.05</min>
-            <max>30.0</max>
+            <max>50.0</max>
             <resolution>0.01</resolution>
           </range>
           <noise>
