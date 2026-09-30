@@ -1,4 +1,4 @@
-- ros_topic_name: "/lidar"
+- ros_topic_name: "/lidar_without_time"
   gz_topic_name: "/unilidar/pointcloud/points"
   ros_type_name: "sensor_msgs/msg/PointCloud2"
   gz_type_name: "ignition.msgs.PointCloudPacked" # ign topic -i -t /unilidar/pointcloud/points

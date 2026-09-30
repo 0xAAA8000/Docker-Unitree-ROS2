@@ -4,6 +4,10 @@ from setuptools import find_packages, setup
 
 package_name = 'sim_gazebo'
 
+py_modules = [ # site-packagesに追加するファイル
+    'add_time_field',
+]
+
 data_files_list = [
     ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
     ('share/' + package_name, ['package.xml']),
@@ -13,13 +17,14 @@ data_files_list = [
     (os.path.join('share', package_name, 'world'), glob('world/*.world')),
     # (インストール先, インストール元)
     # launch.pyのNode関数は実行ファイルを探す。実行ファイルはlibにまとめられる
-    (os.path.join('lib', package_name), glob('src/*.py'))
+    #(os.path.join('lib', package_name), glob('add_time_field.py'))
 ]
 
 setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
+    py_modules=py_modules,
     data_files=data_files_list,
     install_requires=['setuptools'],
     zip_safe=True,
@@ -35,7 +40,7 @@ setup(
     entry_points={
         'console_scripts': [
             # launchで指定する実行ファイル名 = package名.script名:main関数名
-            'add_time_field = sim_gazebo.add_time_field:main',
+            'add_time_field = add_time_field:main',
         ],
     },
 )

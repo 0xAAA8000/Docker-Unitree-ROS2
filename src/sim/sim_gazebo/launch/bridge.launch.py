@@ -97,7 +97,7 @@ def generate_launch_description():
 
     add_timestamp_field = Node(
         package='sim_gazebo',
-        executable='add_time_field.py',
+        executable='add_time_field',
         name='pointcloud_time_adder',
         output='screen'
     )

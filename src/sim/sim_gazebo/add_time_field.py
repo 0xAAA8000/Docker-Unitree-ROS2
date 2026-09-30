@@ -10,7 +10,7 @@ class PointCloudTimeAdder(Node):
         # Gazeboからの入力トピック名
         self.sub = self.create_subscription(
             PointCloud2,
-            '/lidar',
+            '/lidar_without_time',
             self.cb,
             10
         )
@@ -18,7 +18,7 @@ class PointCloudTimeAdder(Node):
         # Point-LIOに入力する出力トピック名
         self.pub = self.create_publisher(
             PointCloud2,
-            '/lidar_with_time',
+            '/lidar',
             10
         )
 
