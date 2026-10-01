@@ -1,0 +1,75 @@
+"""Unitree L2 + Point-LIO live mapping with RViz.
+
+  ros2 launch l2_bringup mapping.launch.py                    # Ethernet, map not saved
+  ros2 launch l2_bringup mapping.launch.py save:=true         # save map on Ctrl+C
+  ros2 launch l2_bringup mapping.launch.py connection:=serial
+  ros2 launch l2_bringup mapping.launch.py rviz:=false
+
+Saved map goes to <point_lio source>/PCD/scans.pcd (overwritten every run; move it if you want to keep it).
+"""
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
+from launch_ros.descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
+
+
+def generate_launch_description():
+    connection = LaunchConfiguration('connection')
+    save = LaunchConfiguration('save')
+    rviz = LaunchConfiguration('rviz')
+
+    # GroupAction scopes the driver's rviz:=false so it does not override ours
+    driver = GroupAction([IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([
+            FindPackageShare('unitree_lidar_ros2'), 'launch.py'])),
+        launch_arguments={'connection': connection, 'rviz': 'false'}.items(),
+    )])
+
+    # Same parameters as point_lio/mapping_unilidar_l2.launch.py, plus save switch
+    point_lio = Node(
+        package='point_lio',
+        executable='pointlio_mapping',
+        name='laserMapping',
+        output='screen',
+        parameters=[
+            PathJoinSubstitution([FindPackageShare('point_lio'), 'config', 'unilidar_l2.yaml']),
+            {
+                'use_imu_as_input': False,
+                'prop_at_freq_of_imu': True,
+                'check_satu': True,
+                'init_map_size': 10,
+                'point_filter_num': 1,
+                'space_down_sample': True,
+                'filter_size_surf': 0.1,
+                'filter_size_map': 0.1,
+                'cube_side_length': 1000.0,
+                'runtime_pos_log_enable': False,
+                'pcd_save.pcd_save_en': ParameterValue(save, value_type=bool),
+            },
+        ],
+    )
+
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz',
+        arguments=['-d', PathJoinSubstitution([
+            FindPackageShare('point_lio'), 'rviz_cfg', 'loam_livox.rviz'])],
+        condition=IfCondition(rviz),
+        output='log',
+    )
+
+    return LaunchDescription([
+        DeclareLaunchArgument('connection', default_value='ethernet',
+                              description="'ethernet' or 'serial'"),
+        DeclareLaunchArgument('save', default_value='false',
+                              description='save the map (PCD) when stopped with Ctrl+C'),
+        DeclareLaunchArgument('rviz', default_value='true'),
+        driver,
+        point_lio,
+        rviz_node,
+    ])
