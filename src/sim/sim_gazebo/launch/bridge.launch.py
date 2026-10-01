@@ -95,12 +95,13 @@ def generate_launch_description():
         ]
     )
 
-    add_timestamp_field = Node(
-        package='sim_gazebo',
-        executable='add_time_field',
-        name='pointcloud_time_adder',
-        output='screen'
-    )
+    # Point Lioのlidar type=5ではtime fieldがないと自動でtime=0を入れる。警告が出るだけなのでここは不要。
+    #add_timestamp_field = Node(
+    #    package='sim_gazebo',
+    #    executable='add_time_field',
+    #    name='pointcloud_time_adder',
+    #    output='screen'
+    #)
 
     # 4. まとめて起動
     return LaunchDescription([
@@ -117,6 +118,6 @@ def generate_launch_description():
             target_action=joint_state_broadcaster_spawner,
             on_exit=[ackermann_spawner])),
         static_tf_pub,
-        add_timestamp_field,
+        #add_timestamp_field,
     ])
 

@@ -246,8 +246,8 @@
           <vertical>
             <samples>18</samples>
             <resolution>1</resolution>
-            <min_angle>-7.85398</min_angle>
-            <max_angle>7.85398</max_angle>
+            <min_angle>-0.785398</min_angle>
+            <max_angle>0.785398</max_angle>
           </vertical>
         </scan>
         <range>
@@ -283,11 +283,9 @@
   <gazebo reference="imu_link">
     <sensor name="imu_sensor" type="imu">
       <always_on>true</always_on>
-      <update_rate>100</update_rate> <!-- 100 Hz 程度が一般的 -->
+      <update_rate>250</update_rate> <!-- unilidarは250Hz -->
       <visualize>true</visualize>
       <topic>/unilidar/imu</topic>
-      <plugin filename="libignition-gazebo-imu-system.so" name="ignition::gazebo::systems::Imu">
-      </plugin>
       <imu>
         <angular_velocity>
           <x>
