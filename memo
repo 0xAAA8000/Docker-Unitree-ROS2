@@ -1,5 +1,0 @@
-# ros2 launch ros_gz_sim gz_sim.launch.py gz_args:="-v 4 -r -g /ros2_ws/src/sim_gazebo/world/flat_kurifarm.world"
-[INFO] [launch]: All log files can be found below /root/.ros/log/2026-09-28-02-37-32-000215-okamoto-22066H-ADLASW11-H-200
-[INFO] [launch]: Default logging verbosity is set to INFO
-[INFO] [ign gazebo-1]: process started with pid [201]
-[ign gazebo-1] [GUI] [Wrn] [Application.cc:802] [QT] file::/Gazebo/GazeboDrawer.qml:242:3: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }

@@ -1,0 +1,16 @@
+digraph G {
+"lidar_link" -> "four_wheel_car/base_link/gpu_lidar"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"base_link" -> "lidar_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"map" -> "camera_init"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"aft_mapping" -> "base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_init" -> "aft_mapped"[label=" Broadcaster: default_authority\nAverage rate: 11.765\nBuffer length: 1.53\nMost recent transform: 43.831\nOldest transform: 42.301\n"];
+"lidar_link" -> "imu_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"base_link" -> "front_left_steer_link"[label=" Broadcaster: default_authority\nAverage rate: 20.952\nBuffer length: 1.05\nMost recent transform: 43.85\nOldest transform: 42.8\n"];
+"base_link" -> "front_right_steer_link"[label=" Broadcaster: default_authority\nAverage rate: 20.952\nBuffer length: 1.05\nMost recent transform: 43.85\nOldest transform: 42.8\n"];
+"base_link" -> "rear_left_wheel"[label=" Broadcaster: default_authority\nAverage rate: 20.952\nBuffer length: 1.05\nMost recent transform: 43.85\nOldest transform: 42.8\n"];
+"base_link" -> "rear_right_wheel"[label=" Broadcaster: default_authority\nAverage rate: 20.952\nBuffer length: 1.05\nMost recent transform: 43.85\nOldest transform: 42.8\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1790842371.7262259"[ shape=plaintext ] ;
+}->"aft_mapping";
+}

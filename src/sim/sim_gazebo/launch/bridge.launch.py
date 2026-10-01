@@ -11,6 +11,7 @@ def generate_launch_description():
     # 1. パッケージやファイルのパス設定
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
     pkg_sim_gazebo = get_package_share_directory('sim_gazebo')
+    pkg_nav2_bringup = get_package_share_directory('nav2_bringup')
 
     config_file = os.path.join(pkg_sim_gazebo, 'config', 'bridge_config.yaml')
     default_world_path = os.path.join(pkg_sim_gazebo, 'world', 'flat_kurifarm.world')
@@ -103,6 +104,42 @@ def generate_launch_description():
     #    output='screen'
     #)
 
+    tf_aft_mapping_to_base_link = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='aft_mapping_to_base_link_publisher',
+        arguments=[
+            '--x', '-0.2',       # base_link から見た aft_mapped の位置 (X軸 [m])
+            '--y', '0.0',        # base_link から見た aft_mapped の位置 (Y軸 [m])
+            '--z', '-0.25',       # base_link から見た aft_mapped の位置 (Z軸 [m])
+            '--yaw', '0.0',      # 回転 (Yaw [rad])
+            '--pitch', '0.0',    # 回転 (Pitch [rad])
+            '--roll', '0.0',     # 回転 (Roll [rad])
+            '--frame-id', 'aft_mapped',
+            '--child-frame-id', 'base_link'
+        ],
+        parameters=[{'use_sim_time': True}]
+    )
+
+    tf_map_to_camera_init = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='map_to_camera_init_publisher',
+        arguments=[
+            '--x', '0.0',
+            '--y', '0.0',
+            '--z', '0.0',
+            '--yaw', '0.0',
+            '--pitch', '0.0',
+            '--roll', '0.0',
+            '--frame-id', 'map',
+            '--child-frame-id', 'camera_init'
+        ],
+        parameters=[{'use_sim_time': True}]
+    )
+
+    
+
     # 4. まとめて起動
     return LaunchDescription([
         world_arg,
@@ -119,5 +156,7 @@ def generate_launch_description():
             on_exit=[ackermann_spawner])),
         static_tf_pub,
         #add_timestamp_field,
+        #tf_aft_mapping_to_base_link,
+        tf_map_to_camera_init
     ])
 
