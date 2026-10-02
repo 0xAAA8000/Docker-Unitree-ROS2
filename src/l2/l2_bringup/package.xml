@@ -10,6 +10,8 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <exec_depend>unitree_lidar_ros2</exec_depend>
   <exec_depend>point_lio</exec_depend>
+  <exec_depend>lidar_localization_ros2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>rviz2</exec_depend>
 
   <export>

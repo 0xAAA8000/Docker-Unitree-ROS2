@@ -7,6 +7,7 @@
 
 Saved map goes to <point_lio source>/PCD/scans.pcd (overwritten every run; move it if you want to keep it).
 """
+import glob
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
 from launch.conditions import IfCondition
@@ -15,6 +16,13 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
+
+
+# Render RViz on the NVIDIA GPU instead of the Intel iGPU (PRIME on-demand).
+# Only when the NVIDIA GLX library exists; forcing it without one makes RViz fail to start.
+NVIDIA_RENDER_ENV = (
+    {'__NV_PRIME_RENDER_OFFLOAD': '1', '__GLX_VENDOR_LIBRARY_NAME': 'nvidia'}
+    if glob.glob('/usr/lib/*/libGLX_nvidia.so.0') else {})
 
 
 def generate_launch_description():
@@ -57,6 +65,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         name='rviz',
+        additional_env=NVIDIA_RENDER_ENV,
         arguments=['-d', PathJoinSubstitution([
             FindPackageShare('point_lio'), 'rviz_cfg', 'loam_livox.rviz'])],
         condition=IfCondition(rviz),
