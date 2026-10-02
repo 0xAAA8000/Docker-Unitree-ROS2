@@ -43,10 +43,30 @@ ros2 launch l2_bringup localization.launch.py map:=... x:=1.5 y:=2.0 yaw:=90   #
 | `rviz` | `true` | RViz2 を起動する |
 
 - 初期位置がずれていたら RViz の **2D Pose Estimate** で指定する (赤いスキャンが白い地図に重なれば OK)。
+- `auto_init:=true`: 起動直後に約3秒静止しているあいだのスキャンから、開始位置を地図上で自動推定する
+  (`scripts/l2_initial_pose.py`。IMU で水平化 → 床から 0.5〜2.0m の構造物の上面図を全方位で照合 →
+  上位 300 候補を ICP で絞り込み → `/initialpose`)。約2〜4秒。別の場所の候補が僅差なら警告を出す。
+  地図から作った模擬スキャンでは 50/50 だったが、**実機では 4 回中 1 回しか当たらなかった** (2026-10-02)。
+  必ず RViz で確認すること。`init_map` は非圧縮 PCD (pcl_voxel_grid の出力は圧縮なので不可)。
+- `record:=true`: 生データ (`/unilidar/cloud`, `/unilidar/imu`) と推定結果を `~/bags/l2loc_日時` に ros2 bag で記録する
+  (`mapping.launch.py` も同様)。
+- ドライバは `unilidar_imu -> unilidar_lidar` の TF を常に出していて、`base_link -> unilidar_lidar` と衝突する
+  (NDT がほとんど動かなくなる)。`localization.launch.py` ではドライバの `/tf` を `/unilidar/tf` に付け替えている。
 - 出力: `/pcl_pose`、`/path`、TF `map -> base_link` (`base_link` = `unilidar_lidar`)。
 - パラメータは `config/localization.yaml`。2025 年度の設定からの変更点:
   初期姿勢 `qw` 0 → 1 (0 は回転として不正)、`use_imu` true → false (当時も IMU は未接続で無効だった)、
   スキャン間引き 0.5 → 0.2m・スレッド 6 → 12 (L2 の 1 スキャンの照合は約 1.5ms で、83ms 間隔に対して余裕が大きいため)。
+
+## 記録の評価 (`tools/l2eval`)
+
+記録した bag を自己位置推定に再生し、同じデータを Point-LIO で処理した軌跡を基準に採点する
+(位置飛び・ずれ・不採用率。結果は `記録_eval/results.md`)。パラメータや地図を変えて何度でも比べられる。
+
+```bash
+tools/l2eval BAG MAP -x X -y Y -yaw DEG -n 名前 [-- -p voxel_leaf_size:=0.5 ...]
+python3 tools/l2eval_dump.py BAG   # 実験中の /pcl_pose を live.csv に出し、開始姿勢を表示
+```
+実機テストの手順は `docs/実機テスト手順_自己位置推定.md`。
 
 ## RViz2 の描画 GPU
 

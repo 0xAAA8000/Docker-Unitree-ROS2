@@ -4,12 +4,17 @@
   ros2 launch l2_bringup mapping.launch.py save:=true         # save map on Ctrl+C
   ros2 launch l2_bringup mapping.launch.py connection:=serial
   ros2 launch l2_bringup mapping.launch.py rviz:=false
+  ros2 launch l2_bringup mapping.launch.py record:=true      # ros2 bag to ~/bags/l2map_<date>
 
 Saved map goes to <point_lio source>/PCD/scans.pcd (overwritten every run; move it if you want to keep it).
 """
+from datetime import datetime
 import glob
+import os
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import (DeclareLaunchArgument, ExecuteProcess, GroupAction,
+                            IncludeLaunchDescription)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -23,6 +28,14 @@ from launch_ros.substitutions import FindPackageShare
 NVIDIA_RENDER_ENV = (
     {'__NV_PRIME_RENDER_OFFLOAD': '1', '__GLX_VENDOR_LIBRARY_NAME': 'nvidia'}
     if glob.glob('/usr/lib/*/libGLX_nvidia.so.0') else {})
+
+# Raw sensor data + estimates, enough to replay and re-tune offline (~7 GB/hour with L2)
+RECORD_TOPICS = ['/unilidar/cloud', '/unilidar/imu', '/aft_mapped_to_init', '/path']
+
+
+def default_bag_path():
+    return os.path.expanduser(datetime.now().strftime('~/bags/l2map_%Y%m%d_%H%M%S'))
+
 
 
 def generate_launch_description():
@@ -72,13 +85,24 @@ def generate_launch_description():
         output='log',
     )
 
+    recorder = ExecuteProcess(
+        cmd=['ros2', 'bag', 'record', '-o', LaunchConfiguration('bag')] + RECORD_TOPICS,
+        condition=IfCondition(LaunchConfiguration('record')),
+        output='screen',
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('connection', default_value='ethernet',
                               description="'ethernet' or 'serial'"),
         DeclareLaunchArgument('save', default_value='false',
                               description='save the map (PCD) when stopped with Ctrl+C'),
         DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('record', default_value='false',
+                              description='record sensor data and estimates with ros2 bag'),
+        DeclareLaunchArgument('bag', default_value=default_bag_path(),
+                              description='output directory of the recording'),
         driver,
         point_lio,
         rviz_node,
+        recorder,
     ])
