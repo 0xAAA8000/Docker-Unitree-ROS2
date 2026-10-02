@@ -1,6 +1,7 @@
 # ========== base：全イメージ共通 ==========
-FROM osrf/ros:humble-desktop-full AS base
+FROM ros:humble-ros-base AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-desktop \
     ros-humble-pcl-conversions ros-humble-pcl-ros \
     ros-humble-tf2-ros ros-humble-tf2-eigen \
     ros-humble-xacro ros-humble-robot-state-publisher \
