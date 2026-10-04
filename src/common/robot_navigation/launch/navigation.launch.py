@@ -54,7 +54,7 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='aft_mapping_to_base_link_publisher',
-        arguments=['-0.2', '0.0', '-0.25', '0.0', '0.0', '0.0', 'aft_mapping', 'base_link'],
+        arguments=['-0.2', '0.0', '-0.25', '0.0', '0.0', '0.0', 'aft_mapped', 'base_link'],
         parameters=[{'use_sim_time': use_sim_time}]
     )
 
@@ -65,7 +65,7 @@ def generate_launch_description():
     nav2_group = GroupAction(
         actions=[
             # トピックのリマップを設定
-            SetRemap(src='/cmd_vel', dst='/ackermann_steering_control'),
+            SetRemap(src='/cmd_vel', dst='/ackermann_steering_controller/reference_unstamped'),
             
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(

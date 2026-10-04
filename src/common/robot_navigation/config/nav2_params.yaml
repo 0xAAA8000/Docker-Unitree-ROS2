@@ -1,7 +1,7 @@
 controller_server:
   ros__parameters:
     use_sim_time: true
-    use_stamped_vel: true    # 重要: /cmd_vel を Twist ではなく TwistStamped で出力する設定
+    use_stamped_vel: false    # 2026/10/04: true->false    # 重要: /cmd_vel を Twist ではなく TwistStamped で出力する設定
     controller_frequency: 20.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
@@ -25,6 +25,7 @@ controller_server:
     # アッカーマン車両用コントローラ設定
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      use_collision_detection: false # 一時的!!!
       desired_linear_vel: 0.5
       max_linear_accel: 1.0
       max_linear_decel: 1.0
@@ -44,6 +45,7 @@ local_costmap:
       width: 5
       height: 5
       resolution: 0.05
+      footprint: "[[0.6, 0.3], [0.6, -0.3], [-0.6, -0.3], [-0.6, 0.3]]"
       plugins: ["voxel_layer", "inflation_layer"]
       
       voxel_layer:
@@ -61,7 +63,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.55
+        inflation_radius: 0.8
 
 global_costmap:
   global_costmap:
@@ -72,6 +74,10 @@ global_costmap:
       robot_base_frame: base_link
       use_sim_time: true
       resolution: 0.05
+      footprint: "[[0.6, 0.3], [0.6, -0.3], [-0.6, -0.3], [-0.6, 0.3]]"
+      rolling_window: true      # ← 追加（車両中心に追従）
+      width: 100                # ← 追加（農園サイズに合わせて）
+      height: 100               # ← 追加
       track_unknown_space: true
       plugins: ["voxel_layer", "inflation_layer"]
       
@@ -90,20 +96,22 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.55
+        inflation_radius: 0.8
 
 bt_navigator:
   ros__parameters:
     use_sim_time: true
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /Odometry
+    odom_topic: /aft_mapped_to_init    # 2026/10/04: /Odometry->/aft_mapped_to_init
 
 planner_server:
   ros__parameters:
     use_sim_time: true
     planner_plugins: ["GridBased"]
     GridBased:
-      plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5
-      use_astar: false
+      plugin: "nav2_smac_planner/SmacPlannerHybrid"
+      motion_model_for_search: "DUBIN"    # 前進のみ
+      minimum_turning_radius: 2.0         # wheelbase 1.0 / tan(steering_limit 0.5) ~= 1.8
+      angle_quantization_bins: 72
+      allow_unknown: true

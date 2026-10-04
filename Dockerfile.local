@@ -27,8 +27,8 @@ CMD ["bash"]
 FROM base AS common-build
 COPY src/common /opt/common_ws/src
 RUN . /opt/ros/humble/setup.sh && \
-    cd /opt/common_ws && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-    rm -rf build log
+    cd /opt/common_ws && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release && \
+    rm -rf log
 
 # ========== l1 ==========
 FROM base AS l1
