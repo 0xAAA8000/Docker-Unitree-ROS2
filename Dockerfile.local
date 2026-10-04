@@ -9,6 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-slam-toolbox \
     libpcl-dev libeigen3-dev libomp-dev python3-dev \
  && rm -rf /var/lib/apt/lists/*
+# WSLg対応
+RUN apt update && apt install -y --no-install-recommends \
+    software-properties-common gnupg ca-certificates \
+ && add-apt-repository -y ppa:kisak/turtle \
+ && apt update \
+ && apt install -y --no-install-recommends \
+    libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgbm1 mesa-libgallium \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /ros2_ws
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -41,7 +49,8 @@ RUN . /opt/ros/humble/setup.sh && . /opt/common_ws/install/setup.sh && \
 # ========== sim ==========
 FROM base AS sim
 ENV ROS2_TARGET=sim \
-    IGN_GAZEBO_RESOURCE_PATH=/ros2_ws/src/sim_gazebo/model
+    IGN_GAZEBO_RESOURCE_PATH=/ros2_ws/src/sim_gazebo/model \
+    GALLIUM_DRIVER=d3d12
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-ros-gz ros-humble-sdformat-urdf ros-humble-ign-ros2-control ros-humble-rviz2 \
     ros-humble-ros2-controllers ros-humble-ros2-control ros-humble-ackermann-steering-controller \

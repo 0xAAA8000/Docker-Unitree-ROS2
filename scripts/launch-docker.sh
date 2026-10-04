@@ -61,6 +61,12 @@ if [ -d "/dev/dri" ]; then
     echo "[ info ] Driver Mounted"
 fi
 
+WSL_ARGS=()
+if [ -d "/usr/lib/wsl" ]; then
+    WSL_ARGS+=(-v /usr/lib/wsl:/usr/lib/wsl)
+    echo "[ info ] WSL lib Mounted"
+fi
+
 docker run -it --rm \
     "${GPU_ARGS[@]}" \
     --network host \
@@ -72,4 +78,5 @@ docker run -it --rm \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     ${MOUNT_OPTION} \
     "${DEVICE_ARGS[@]}" \
+    "${WSL_ARGS[@]}" \
     $IMAGE "${DOCKER_CMD[@]}"
