@@ -49,7 +49,7 @@
                           0.0, 0.0, 1.0 ] # ulhk 4 utbm 3
 
         odometry: 
-            publish_odometry_without_downsample: true  
+            publish_odometry_without_downsample: false  
             #publish_odometry_without_downsample: false
 
         publish:

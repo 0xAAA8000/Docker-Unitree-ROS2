@@ -84,7 +84,7 @@ def generate_launch_description():
         declare_use_sim_time_cmd,
         declare_params_file_cmd,
         declare_autostart_cmd,
-        tf_map_to_camera_init,
+        #tf_map_to_camera_init,
         tf_aft_mapping_to_base_link,
         nav2_group
     ])
