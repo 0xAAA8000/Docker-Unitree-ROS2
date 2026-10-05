@@ -66,7 +66,7 @@ def generate_launch_description():
     bt_xml = os.path.join(pkg_robot_navigation, 'behavior_trees', 'navigate_keep_path.xml')
     configured_params = RewrittenYaml(
         source_file=params_file,
-        param_rewrites={'default_nav_to_pose_bt_xml': bt_xml},
+        param_rewrites={'bt_navigator.ros__parameters.default_nav_to_pose_bt_xml': bt_xml},
         convert_types=True
     )
     nav2_group = GroupAction(
