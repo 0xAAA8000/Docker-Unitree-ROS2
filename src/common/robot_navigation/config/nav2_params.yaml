@@ -26,10 +26,15 @@ controller_server:
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController" # RPP
       desired_linear_vel: 0.5
-      max_linear_accel: 1.0
-      max_linear_decel: 1.0
-      use_rotate_to_heading: false   # 重要: その場旋回コマンドを無効化
-      allow_reversing: true          # バック（後進）での切り返しを許可
+      lookahead_dist: 1.2                       # 既定 0.6。最小旋回半径に近い距離を見る
+      min_lookahead_dist: 0.8
+      max_lookahead_dist: 2.0
+      use_velocity_scaled_lookahead_dist: false
+      use_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 3.0  # 既定 0.9。これより急なカーブでは減速する
+      regulated_linear_scaling_min_speed: 0.15
+      use_rotate_to_heading: false
+      allow_reversing: true
       use_costmap_heading: false
 
 local_costmap:
@@ -45,7 +50,7 @@ local_costmap:
       height: 5
       resolution: 0.1
       track_unknown_space: false    # 未知の領域を「空き」として扱う（探索しながらの走行向け）
-      footprint: "[[0.6, 0.3], [0.6, -0.3], [-0.6, -0.3], [-0.6, 0.3]]"
+      footprint: "[[0.6, 0.4], [0.6, -0.4], [-0.6, -0.4], [-0.6, 0.4]]"
       plugins: ["obstacle_layer", "inflation_layer"]
 
       obstacle_layer:
@@ -85,11 +90,10 @@ global_costmap:
       use_sim_time: true
       resolution: 0.1
       track_unknown_space: false    # 未知の領域を「空き」として扱う（探索しながらの走行向け）
-      footprint: "[[0.6, 0.3], [0.6, -0.3], [-0.6, -0.3], [-0.6, 0.3]]"
+      footprint: "[[0.6, 0.4], [0.6, -0.4], [-0.6, -0.4], [-0.6, 0.4]]"
       rolling_window: true      # ← 追加（車両中心に追従）
       width: 100                # ← 追加（農園サイズに合わせて）
       height: 100               # ← 追加
-      track_unknown_space: true
       plugins: ["obstacle_layer", "inflation_layer"]
 
       obstacle_layer:
@@ -133,7 +137,7 @@ planner_server:
     GridBased:
       plugin: "nav2_smac_planner/SmacPlannerHybrid"
       motion_model_for_search: "REEDS_SHEPP"    # 前進のみ # 2026/10/05: "DUBIN"->"REEDS_SHEPP": RPPで後進を許可してるので、それに合わせる
-      minimum_turning_radius: 2.0         # wheelbase 1.0 / tan(steering_limit 0.5) ~= 1.8
+      minimum_turning_radius: 3.0         # wheelbase 1.0 / tan(steering_limit 0.5) ~= 1.8
       allow_unknown: true
       max_planning_time: 15.0       # 既定 5.0
       downsample_costmap: false     # true にしない（Humble + rolling_window では原点がずれる）

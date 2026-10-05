@@ -5,6 +5,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Grou
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, SetRemap
+from nav2_common.launch import RewrittenYaml
 
 def generate_launch_description():
     # apt install された nav2_bringup のパスを取得
@@ -62,6 +63,12 @@ def generate_launch_description():
     # 3. Nav2 Navigation Launch
     # /cmd_vel を /ackermann_steering_control にリマップして一括起動
     # ----------------------------------------------------------------------
+    bt_xml = os.path.join(pkg_robot_navigation, 'behavior_trees', 'navigate_keep_path.xml')
+    configured_params = RewrittenYaml(
+        source_file=params_file,
+        param_rewrites={'default_nav_to_pose_bt_xml': bt_xml},
+        convert_types=True
+    )
     nav2_group = GroupAction(
         actions=[
             # トピックのリマップを設定
@@ -73,7 +80,7 @@ def generate_launch_description():
                 ),
                 launch_arguments={
                     'use_sim_time': use_sim_time,
-                    'params_file': params_file,
+                    'params_file': configured_params,
                     'autostart': autostart
                 }.items()
             )
