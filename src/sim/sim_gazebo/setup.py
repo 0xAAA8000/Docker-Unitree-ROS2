@@ -6,6 +6,7 @@ package_name = 'sim_gazebo'
 
 py_modules = [ # site-packagesに追加するファイル
     'add_time_field',
+    'filter_invalid_points'
 ]
 
 data_files_list = [
@@ -41,6 +42,7 @@ setup(
         'console_scripts': [
             # launchで指定する実行ファイル名 = package名.script名:main関数名
             'add_time_field = add_time_field:main',
+            'filter_invalid_points = filter_invalid_points:main'
         ],
     },
 )

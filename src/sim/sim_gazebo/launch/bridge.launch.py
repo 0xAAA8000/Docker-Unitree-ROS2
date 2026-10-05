@@ -44,6 +44,14 @@ def generate_launch_description():
         output='screen'
     )
 
+    filter_invalid_points = Node(
+        package='sim_gazebo',
+        executable='filter_invalid_points',
+        name='filter_invalid_points',
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
     urdf_path = os.path.join(pkg_sim_gazebo, 'urdf/four_wheel_car.urdf')
     with open(urdf_path, 'r') as infp:
         robot_desc = infp.read()
@@ -145,6 +153,7 @@ def generate_launch_description():
         world_arg,
         gazebo,
         bridge,
+        filter_invalid_points,
         robot_state_publisher,
         spawn_robot,
         # spawn 完了後に順番に起動する（先に走らせると controller_manager がまだ無い）
