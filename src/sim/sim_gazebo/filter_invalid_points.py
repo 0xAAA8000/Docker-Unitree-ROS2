@@ -16,12 +16,19 @@ SELF_BOX_MAX = np.array([ 0.45,  0.40,  0.10])
 
 
 class FilterInvalidPoints(Node):
-    """inf/NaN 点を除去し、方位角から time フィールドを付けて再配信する"""
+    """inf/NaN 点を除去し、方位角から time フィールドを付けて/lidarに再配信する。
+    地面を除いた障害物を/lidar_obstaclesに配信する。
+    実機(L1, L2)では無効点は配信されず、また時間フィールドも一緒に送られてくるので、障害物判定の点群のみ配信すればいい"""
 
     def __init__(self):
         super().__init__('filter_invalid_points')
+        self.ground_z = self.declare_parameter('ground_z', -0.35).value                 # LiDAR から見た地面の z
+        self.obstacle_min = self.declare_parameter('obstacle_min_height', 0.15).value  # 地面からの高さ
+        self.obstacle_max = self.declare_parameter('obstacle_max_height', 0.5).value   # 地面からの高さ
+
         self.sub = self.create_subscription(PointCloud2, '/lidar_raw', self.cb, 10)
         self.pub = self.create_publisher(PointCloud2, '/lidar', 10)
+        self.pub_obs = self.create_publisher(PointCloud2, '/lidar_obstacles', 10)
 
     def cb(self, msg: PointCloud2):
         fields = [f for f in msg.fields if f.name != 'time']
@@ -59,19 +66,29 @@ class FilterInvalidPoints(Node):
         azimuth = np.arctan2(pts['y'], pts['x'])                     # [-pi, pi]
         out_pts['time'] = (azimuth + np.pi) / (2 * np.pi) * TIME_SPREAD  # [0, TIME_SPREAD] 秒
 
-        out = PointCloud2()
-        out.header = msg.header
-        out.fields = fields + [
+        out_fields = fields + [
             PointField(name='time', offset=msg.point_step, datatype=PointField.FLOAT32, count=1)
         ]
-        out.is_bigendian = msg.is_bigendian
-        out.point_step = out_step
-        out.height = 1
-        out.width = len(out_pts)
-        out.row_step = out.width * out_step
-        out.data = array.array('B', out_pts.tobytes())   # bytes を直接渡すと setter が遅い
+        self.pub.publish(self.make_cloud(msg, out_fields, out_step, out_pts))
+
+        # LiDAR 座標系の z で地面を判定し、障害物の高さ帯の点だけを残す
+        h = out_pts['z'] - self.ground_z                 # 地面からの高さ
+        obs_pts = out_pts[(h > self.obstacle_min) & (h < self.obstacle_max)]
+        self.pub_obs.publish(self.make_cloud(msg, out_fields, out_step, obs_pts))
+
+    @staticmethod
+    def make_cloud(src, fields, point_step, pts):
+        out = PointCloud2()
+        out.header = src.header
+        out.fields = fields
+        out.is_bigendian = src.is_bigendian
+        out.point_step = point_step
+        out.height = 1                      # 穴を詰めたので unorganized にする
+        out.width = len(pts)
+        out.row_step = out.width * point_step
+        out.data = array.array('B', pts.tobytes())   # bytes を直接渡すと setter が遅い
         out.is_dense = True
-        self.pub.publish(out)
+        return out
 
 
 def main():

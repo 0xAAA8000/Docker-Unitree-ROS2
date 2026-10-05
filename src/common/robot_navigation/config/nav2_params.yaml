@@ -20,7 +20,7 @@ controller_server:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.25  # 距離
-      yaw_goal_tolerance: 1 # 向き[rad] 1rad~=60deg
+      yaw_goal_tolerance: 1.0 # 向き[rad] 1rad~=60deg
 
     # アッカーマン車両用コントローラ設定
     FollowPath:
@@ -46,21 +46,29 @@ local_costmap:
       resolution: 0.1
       track_unknown_space: false    # 未知の領域を「空き」として扱う（探索しながらの走行向け）
       footprint: "[[0.6, 0.3], [0.6, -0.3], [-0.6, -0.3], [-0.6, 0.3]]"
-      plugins: ["voxel_layer", "inflation_layer"]
-      
-      voxel_layer:
-        plugin: "nav2_costmap_2d::VoxelLayer"
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: pointcloud
-        pointcloud:
-          topic: /lidar # 2026/10/05: /cloud_registered->/lidar: cloud_registeredのframe idはcamera init。車両が動いてもcostmapは追従せずcamera initにとどまる。
-          max_obstacle_height: 0.1
-          min_obstacle_height: 0.0 # 認知下限[m]、global frame z基準
-          obstacle_max_range: 20.0  # 既定 2.5 → 遠くまで地図に反映する
-          raytrace_max_range: 25.0  # 既定 3.0
-          clearing: True
-          marking: True
+        max_obstacle_height: 100.0       # レイヤー全体の上限（既定 2.0）。map の z で切られないように大きくする
+        observation_sources: obstacles ground_clear
+        obstacles:                       # 障害物の判定：地面除去済みの点
+          topic: /lidar_obstacles
           data_type: "PointCloud2"
+          marking: True
+          clearing: False
+          min_obstacle_height: -100.0    # 高さはセンサー座標系で判定済みなので、ここでは制限しない
+          max_obstacle_height: 100.0     # ※観測ごとの既定値は 0.0。必ず指定する
+          obstacle_max_range: 20.0
+        ground_clear:                    # 空きセルのクリア：地面を含む全点へレイを飛ばす
+          topic: /lidar
+          data_type: "PointCloud2"
+          marking: False
+          clearing: True
+          min_obstacle_height: -100.0
+          max_obstacle_height: 100.0
+          raytrace_max_range: 25.0
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -82,21 +90,29 @@ global_costmap:
       width: 100                # ← 追加（農園サイズに合わせて）
       height: 100               # ← 追加
       track_unknown_space: true
-      plugins: ["voxel_layer", "inflation_layer"]
-      
-      voxel_layer:
-        plugin: "nav2_costmap_2d::VoxelLayer"
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: pointcloud
-        pointcloud:
-          topic: /lidar # 2026/10/05: /cloud_registered->/lidar: cloud_registeredのframe idはcamera init。車両が動いてもcostmapは追従せずcamera initにとどまる。
-          max_obstacle_height: 0.1
-          min_obstacle_height: 0.0 # 認知下限[m]、global frame z基準
-          obstacle_max_range: 20.0  # 既定 2.5 → 遠くまで地図に反映する
-          raytrace_max_range: 25.0  # 既定 3.0
-          clearing: True
-          marking: True
+        max_obstacle_height: 100.0       # レイヤー全体の上限（既定 2.0）。map の z で切られないように大きくする
+        observation_sources: obstacles ground_clear
+        obstacles:                       # 障害物の判定：地面除去済みの点
+          topic: /lidar_obstacles
           data_type: "PointCloud2"
+          marking: True
+          clearing: False
+          min_obstacle_height: -100.0    # 高さはセンサー座標系で判定済みなので、ここでは制限しない
+          max_obstacle_height: 100.0     # ※観測ごとの既定値は 0.0。必ず指定する
+          obstacle_max_range: 20.0
+        ground_clear:                    # 空きセルのクリア：地面を含む全点へレイを飛ばす
+          topic: /lidar
+          data_type: "PointCloud2"
+          marking: False
+          clearing: True
+          min_obstacle_height: -100.0
+          max_obstacle_height: 100.0
+          raytrace_max_range: 25.0
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -120,9 +136,10 @@ planner_server:
       minimum_turning_radius: 2.0         # wheelbase 1.0 / tan(steering_limit 0.5) ~= 1.8
       allow_unknown: true
       max_planning_time: 15.0       # 既定 5.0
-      downsample_costmap: false      # true にしない（Humble + rolling_window では原点がずれる）
+      downsample_costmap: false     # true にしない（Humble + rolling_window では原点がずれる）
       downsampling_factor: 2        # 0.1 m → 0.2 m 相当で探索
       angle_quantization_bins: 72
+      reverse_penalty: 10.0           # 後進のペナルティ
 
 behavior_server: #  [behavior_server]: Initial robot pose is not available.への対処
   ros__parameters:
