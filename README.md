@@ -86,6 +86,30 @@ L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
 を参照してください。
 
 
+## 実機の走行キャリブレーション (`robot_operation calibrate_drive`)
+
+実機を自動で走らせて、次の2つの対応を Point-LIO のオドメトリから計測します。
+
+* スロットル (operator.ino の -100..100) と速度 [m/s]
+* サーボ角 [deg] と前輪の舵角 [deg]
+
+```bash
+# ターミナル1, 2: LiDAR ドライバと Point-LIO (車体は静止させておく)
+ros2 launch unitree_lidar_ros2 launch.py
+ros2 launch point_lio mapping_unilidar_l2.launch.py rviz:=false
+
+# ターミナル3: 計測 (半径 3 m ほどの空きが必要)
+ros2 run robot_operation calibrate_drive --wheelbase <ホイールベース[m]> --lidar-x <後輪軸からLiDARまでの前方向距離[m]>
+```
+
+* 手順は2段階です。まずステアリングを中央にして各スロットルで直進し、同じだけ後退して戻ります。次に各サーボ角で、一定のスロットルのまま1周（または時間切れ）するまで旋回します。
+* LiDAR は前に 30 度傾いていても、X 軸が前を向いていれば問題ありません。機体 X 軸を水平面に投影した向きをヨー角として使います。
+* 舵角は自転車モデル `tan(δ) = L / R` で求めます。旋回半径 R は、LiDAR の位置から後輪軸中心の値に換算します (`--lidar-x`)。
+* 結果は `~/drive_calib/<日時>/` に保存されます。生データ `raw.csv`, `segments.csv`、区間ごとの結果 `throttle_result.csv`, `steering_result.csv`、フィット結果 `summary.yaml` の5つです。
+* `--analyze <ディレクトリ>` を付けると走行せず、記録済みのデータを別の `--wheelbase` / `--lidar-x` で解析し直せます。
+* Ctrl-C、またはオドメトリが 0.5 秒途絶えた場合は、スロットル 0・サーボ中央を送って止めます。ただし Arduino 側にはタイムアウトがないので、USB が抜けたときに備えてすぐ止められる状態で使ってください。
+* 主なオプション: `--throttles 15,20,30`, `--servos 40,55,70,85,100,115,130`, `--steer-throttle 25`, `--max-distance 3.0`, `--pause` (区間ごとに Enter 待ち)。一覧は `--help` で確認できます。
+
 ## Point-LIO のバージョンについて
 
 Unitree 公式の [unitreerobotics/point_lio_unilidar](https://github.com/unitreerobotics/point_lio_unilidar)
