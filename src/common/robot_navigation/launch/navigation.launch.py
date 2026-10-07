@@ -71,7 +71,7 @@ def generate_launch_description():
     )
     nav2_group = GroupAction(
         actions=[
-            # トピックのリマップを設定
+            # トピックのリマップ(経路)を設定。型変換はしてない。
             SetRemap(src='/cmd_vel', dst='/ackermann_steering_controller/reference_unstamped'),
             
             IncludeLaunchDescription(
