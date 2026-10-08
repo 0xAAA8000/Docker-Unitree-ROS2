@@ -74,7 +74,7 @@ int controller(String cmd){
     int cmds[2] = {0};
 
     for (unsigned int i = 0; i < cmd.length(); i++){
-        if (!isDigit(cmd[i]) and (cmd[i] != ' ')){
+        if (!isDigit(cmd[i]) and (cmd[i] != ' ') and (cmd[i] != '-')){ // '-' は後退
             Serial.println("[ ERR ][ CONTROLLER ] Command must integer.");
             return;
         }
