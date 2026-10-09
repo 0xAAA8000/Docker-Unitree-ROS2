@@ -4,6 +4,7 @@ set -e
 
 IMAGE="ghcr.io/0xaaa8000/docker-unitree-ros2"
 TARGET="sim"
+TAG="surface11"
 DEV_MODE=false
 DOCKER_CMD=()
 
@@ -14,6 +15,9 @@ for arg in "$@"; do
             ;;
         --target=*)
             TARGET="${arg#*=}"
+            ;;
+        --tag=*)
+            TAG="${arg#*=}"
             ;;
         --dev)
             DEV_MODE=true
@@ -31,11 +35,22 @@ if [ "$DEV_MODE" = true ]; then
         exit 1
     fi
 
+    HOST_COMMON_SRC_PATH="$(pwd)/src/common"
+    if [ ! -d "$HOST_COMMON_SRC_PATH" ]; then
+        echo "error: mount target directory is not exist.: ${HOST_COMMON_SRC_PATH}"
+        exit 1
+    fi
+
     CONTAINER_SRC_PATH="/ros2_ws/src"
-    MOUNT_OPTION="-v ${HOST_SRC_PATH}:${CONTAINER_SRC_PATH}"
+    CONTAINER_COMMON_SRC_PATH="/opt/common_ws/src"
+    MOUNT_OPTIONS=()
+    MOUNT_OPTIONS+=(-v ${HOST_SRC_PATH}:${CONTAINER_SRC_PATH})
+    MOUNT_OPTIONS+=(-v ${HOST_COMMON_SRC_PATH}:${CONTAINER_COMMON_SRC_PATH})
+
+    echo "[ info ] Deb mode enabled. MOUNT_OPTIONS: ${MOUNT_OPTIONS[@]}"
 fi
 
-IMAGE="${IMAGE}/${TARGET}:latest"
+IMAGE="${IMAGE}/${TARGET}:${TAG}"
 
 # コンテナからホストの X サーバへ接続できるようにする
 xhost +local:root >/dev/null 2>&1 || true
@@ -61,10 +76,18 @@ if [ -d "/dev/dri" ]; then
     echo "[ info ] Driver Mounted"
 fi
 
+# コンテナ内の /usr/lib/wsl は /opt/wsl-gpu/setup.sh が /usr/lib/wsl-host を元に組み立てる
+WSL_ARGS=()
+if [ -d "/usr/lib/wsl" ]; then
+    WSL_ARGS+=(-v /usr/lib/wsl:/usr/lib/wsl-host:ro)
+    echo "[ info ] WSL lib Mounted"
+fi
+if [ -e "/dev/dxg" ]; then
+    WSL_ARGS+=(--device=/dev/dxg)
+    echo "[ info ] WSL GPU device (/dev/dxg) Mounted"
+fi
+
 docker run -it --rm \
-    --platform linux/arm64 \
-    --device=/dev/dxg \
-    -v /usr/lib/wsl:/usr/lib/wsl-host:ro \
     "${GPU_ARGS[@]}" \
     --network host \
     --ipc host \
@@ -73,6 +96,7 @@ docker run -it --rm \
     -e QT_X11_NO_MITSHM=1 \
     -e XDG_RUNTIME_DIR=/tmp/runtime-root \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-    ${MOUNT_OPTION} \
+    "${MOUNT_OPTIONS[@]}" \
     "${DEVICE_ARGS[@]}" \
+    "${WSL_ARGS[@]}" \
     $IMAGE "${DOCKER_CMD[@]}"

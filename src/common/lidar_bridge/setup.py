@@ -31,6 +31,7 @@ setup(
         'console_scripts': [
             'lidar_bridge = lidar_bridge.lidar_bridge_node:main',
             'check_inputs = lidar_bridge.check_inputs_node:main',
+            'sensor_check = lidar_bridge.sensor_check:main',
         ],
     },
 )

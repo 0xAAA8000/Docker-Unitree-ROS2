@@ -5,6 +5,7 @@
   * 静的 TF          : map -> camera_init, aft_mapped -> base_link,
                        base_link -> lidar_link, base_link -> imu_link
   * Point-LIO        : /lidar, /imu を購読 (point_lio:=false で起動しない)
+  * RViz             : Point-LIO の結果を表示 (rviz:=false で起動しない)
 
 LiDAR ドライバ (unitree_lidar_ros2) は別に起動しておくこと.
 Nav2 は robot_navigation の navigation.launch.py を
@@ -98,13 +99,20 @@ def _setup(context):
             'use_imu_as_input': False,
             'prop_at_freq_of_imu': True,
             'check_satu': True,
-            'init_map_size': 10,
+            # mapping_unilidar_l1/l2.launch.py は 10. 少ない点で最初の地図を作ると
+            # 静止中もドリフトしやすいので増やす (hku-mars/Point-LIO issue #86)
+            'init_map_size': int(LaunchConfiguration('init_map_size').perform(context)),
             'point_filter_num': 1,
             'space_down_sample': True,
             'filter_size_surf': 0.1,
             'filter_size_map': 0.1,
             'cube_side_length': 1000.0,
             'runtime_pos_log_enable': False,
+            # 実機は LiDAR の回転で車体ごと振動し, その加速度ノイズを積分して静止中も
+            # 動いていると推定してしまう. IMU の加速度を信用しすぎないようにする
+            # (yaml の値はそれぞれ 0.1, 500.0)
+            'mapping.imu_meas_acc_cov': float(LaunchConfiguration('imu_acc_cov').perform(context)),
+            'mapping.acc_cov_output': float(LaunchConfiguration('acc_cov_output').perform(context)),
         },
     ]
     actions.append(Node(
@@ -114,6 +122,14 @@ def _setup(context):
         output='screen',
         parameters=point_lio_params,
         condition=IfCondition(LaunchConfiguration('point_lio')),
+    ))
+    actions.append(Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz',
+        arguments=['-d', os.path.join(get_package_share_directory('point_lio'),
+                                      'rviz_cfg', 'loam_livox.rviz')],
+        condition=IfCondition(LaunchConfiguration('rviz')),
     ))
     return actions
 
@@ -127,5 +143,13 @@ def generate_launch_description():
                               description='取付位置・フィルタの設定'),
         DeclareLaunchArgument('point_lio', default_value='true',
                               description='Point-LIO を起動するか'),
+        DeclareLaunchArgument('rviz', default_value='true',
+                              description='RViz を起動するか'),
+        DeclareLaunchArgument('imu_acc_cov', default_value='2.0',
+                              description='Point-LIO の IMU 加速度の観測分散 (大きいほど IMU を信用しない)'),
+        DeclareLaunchArgument('acc_cov_output', default_value='10.0',
+                              description='Point-LIO の加速度のプロセスノイズ (小さいほど加速度の推定が滑らか)'),
+        DeclareLaunchArgument('init_map_size', default_value='1000',
+                              description='Point-LIO が最初の地図を作るのに使う点の数の下限'),
         OpaqueFunction(function=_setup),
     ])

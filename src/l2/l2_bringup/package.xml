@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>l2_bringup</name>
+  <version>0.1.0</version>
+  <description>One-command Unitree L2 + Point-LIO mapping with RViz</description>
+  <maintainer email="127299309+HibiGames@users.noreply.github.com">HibiGames</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>unitree_lidar_ros2</exec_depend>
+  <exec_depend>point_lio</exec_depend>
+  <exec_depend>lidar_localization_ros2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
