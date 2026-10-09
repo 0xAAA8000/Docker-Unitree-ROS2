@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-common:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-arm
     permissions:
       contents: read
       packages: write
@@ -25,14 +25,14 @@ jobs:
           context: .
           target: common-build
           push: false # 公開はしない
-          platforms: linux/amd64
+          platforms: linux/arm64
           cache-from: type=gha,scope=common
           cache-to: type=gha,mode=max,scope=common
 
 
   build-and-push:
     needs: build-common
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-arm
     permissions:
       contents: read
       packages: write  # GHCRへの書き込み権限を付与
@@ -81,7 +81,7 @@ jobs:
           context: .
           target: ${{ matrix.target }}
           push: true
-          platforms: linux/amd64
+          platforms: linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=common
