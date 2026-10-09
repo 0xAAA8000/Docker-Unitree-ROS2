@@ -14,7 +14,8 @@ import os
 
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess, GroupAction,
-                            IncludeLaunchDescription)
+                            IncludeLaunchDescription, RegisterEventHandler)
+from launch.event_handlers import OnProcessExit
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -75,6 +76,18 @@ def generate_launch_description():
         ],
     )
 
+    # Start Point-LIO only once the driver delivers properly time-stamped data: a zero-stamped
+    # first scan breaks its IMU initialization (tilted map) or keeps it from starting.
+    wait_for_data = Node(
+        package='l2_bringup',
+        executable='l2_wait_for_data.py',
+        name='l2_wait_for_data',
+        remappings=[('cloud', '/unilidar/cloud'), ('imu', '/unilidar/imu')],
+        output='screen',
+    )
+    start_point_lio = RegisterEventHandler(OnProcessExit(target_action=wait_for_data,
+                                                         on_exit=[point_lio]))
+
     data_watch = Node(
         package='l2_bringup',
         executable='l2_data_watch.py',
@@ -111,7 +124,8 @@ def generate_launch_description():
         DeclareLaunchArgument('bag', default_value=default_bag_path(),
                               description='output directory of the recording'),
         driver,
-        point_lio,
+        wait_for_data,
+        start_point_lio,
         data_watch,
         rviz_node,
         recorder,
