@@ -1,0 +1,29 @@
+# 実機の LiDAR 取付とフィルタの設定。値は実機に合わせて測って書き換えること。
+# lidar_x..lidar_yaw_deg は real.launch.py の静的 TF (base_link -> lidar_link,
+# aft_mapped -> base_link) にも使われる。
+lidar_bridge:
+  ros__parameters:
+    cloud_in: /unilidar/cloud
+    imu_in: /unilidar/imu
+    cloud_out: /lidar
+    obstacles_out: /lidar_obstacles
+    imu_out: /imu
+    lidar_frame: lidar_link
+    imu_frame: imu_link
+
+    # base_link (Nav2 の footprint の中心) から見た LiDAR の位置 [m]
+    lidar_x: 0.20
+    lidar_y: 0.0
+    lidar_z: 0.25
+    # LiDAR の姿勢 [deg]。前 (下向き) に 30 度傾けているので pitch = +30
+    lidar_roll_deg: 0.0
+    lidar_pitch_deg: 30.0
+    lidar_yaw_deg: 0.0
+
+    # 以下は base_link 座標 [m]
+    ground_z: -0.10               # 地面の z
+    obstacle_min_height: 0.15     # 地面からこの高さ以上を障害物とする
+    obstacle_max_height: 0.50     # 地面からこの高さ未満を障害物とする
+    self_box_min: [-0.40, -0.25, -0.20]   # 自車体の点を除く箱
+    self_box_max: [0.40, 0.25, 0.40]
+    range_min: 0.30               # LiDAR からこの距離未満の点は捨てる

@@ -1,9 +1,6 @@
-import os
-from glob import glob
-
 from setuptools import find_packages, setup
 
-package_name = 'robot_operation'
+package_name = 'lidar_bridge'
 
 setup(
     name=package_name,
@@ -20,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer='root',
     maintainer_email='root@todo.todo',
-    description='Nav2 の Twist を Arduino (operator.ino) のシリアル指令に変換する',
+    description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -29,8 +26,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'calibrate_drive = robot_operation.calibrate_drive:main',
-            'cmd_vel_converter = robot_operation.cmd_vel_converter:main',
         ],
     },
 )

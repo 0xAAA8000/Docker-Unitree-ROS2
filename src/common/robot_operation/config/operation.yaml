@@ -1,0 +1,23 @@
+# cmd_vel_converter のパラメータ
+# calibration_file に calibrate_drive の summary.yaml を指定すると、
+# wheelbase / servo_center / steer_ratio_k / max_steer_deg / *_gain / *_deadband は
+# そちらの値で上書きされる。
+cmd_vel_converter:
+  ros__parameters:
+    cmd_vel_topic: /cmd_vel
+    # port / dry_run / calibration_file は operation.launch.py の引数で指定する
+    baud: 115200
+    rate: 20.0                  # 指令の送信周期 [Hz]
+    cmd_timeout: 0.5            # Twist がこの時間来なければ停止 [s]
+
+    # --- 以下はキャリブレーション前の仮の値。実機で計測して置き換えること ---
+    wheelbase: 0.26             # [m]
+    servo_center: 85.0          # 舵角 0 になるサーボ角 [deg]
+    steer_ratio_k: 0.48         # sin(舵角) = K * sin(サーボ角 - 中央)。サーボ角を増やすと右に切れるなら負
+    max_steer_deg: 20.0         # 舵角の上限 [deg]
+    forward_gain: 0.03          # 前進 [m/s / throttle]
+    forward_deadband: 12.0      # 前進で動き出すスロットル
+    backward_gain: 0.03
+    backward_deadband: -12.0
+    max_throttle: 50.0          # スロットルの上限 (安全のため)
+    min_speed: 0.02             # これ未満の速度指令は停止 [m/s]

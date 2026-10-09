@@ -2,6 +2,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, SetRemap
@@ -16,11 +17,27 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('params_file')
     autostart = LaunchConfiguration('autostart')
+    publish_base_tf = LaunchConfiguration('publish_base_tf')
+    cmd_vel_topic = LaunchConfiguration('cmd_vel_topic')
 
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
         description='Gazeboシミュレーション時間を使用するかどうか'
+    )
+
+    # 実機では lidar_bridge の real.launch.py が LiDAR の傾きを含めて出すので false にする
+    declare_publish_base_tf_cmd = DeclareLaunchArgument(
+        'publish_base_tf',
+        default_value='true',
+        description='aft_mapped -> base_link の静的 TF (sim 用の値) を出すか'
+    )
+
+    # sim: ackermann_steering_controller へ / 実機: /cmd_vel (robot_operation の cmd_vel_converter)
+    declare_cmd_vel_topic_cmd = DeclareLaunchArgument(
+        'cmd_vel_topic',
+        default_value='/ackermann_steering_controller/reference_unstamped',
+        description='Nav2 の /cmd_vel のリマップ先'
     )
 
     # デフォルトのパラメータファイルパス（実行ディレクトリ配下の nav2_params.yaml）
@@ -56,7 +73,8 @@ def generate_launch_description():
         executable='static_transform_publisher',
         name='aft_mapping_to_base_link_publisher',
         arguments=['-0.2', '0.0', '-0.25', '0.0', '0.0', '0.0', 'aft_mapped', 'base_link'],
-        parameters=[{'use_sim_time': use_sim_time}]
+        parameters=[{'use_sim_time': use_sim_time}],
+        condition=IfCondition(publish_base_tf)
     )
 
     # ----------------------------------------------------------------------
@@ -72,7 +90,7 @@ def generate_launch_description():
     nav2_group = GroupAction(
         actions=[
             # トピックのリマップ(経路)を設定。型変換はしてない。
-            SetRemap(src='/cmd_vel', dst='/ackermann_steering_controller/reference_unstamped'),
+            SetRemap(src='/cmd_vel', dst=cmd_vel_topic),
             
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -91,6 +109,8 @@ def generate_launch_description():
         declare_use_sim_time_cmd,
         declare_params_file_cmd,
         declare_autostart_cmd,
+        declare_publish_base_tf_cmd,
+        declare_cmd_vel_topic_cmd,
         #tf_map_to_camera_init,
         tf_aft_mapping_to_base_link,
         nav2_group
