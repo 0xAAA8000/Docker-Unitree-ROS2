@@ -29,8 +29,9 @@ NVIDIA_RENDER_ENV = (
     {'__NV_PRIME_RENDER_OFFLOAD': '1', '__GLX_VENDOR_LIBRARY_NAME': 'nvidia'}
     if glob.glob('/usr/lib/*/libGLX_nvidia.so.0') else {})
 
-# Raw sensor data + estimates, enough to replay and re-tune offline (~7 GB/hour with L2)
-RECORD_TOPICS = ['/unilidar/cloud', '/unilidar/imu', '/aft_mapped_to_init', '/path']
+# Raw sensor data, enough to replay and re-tune offline (~7 GB/hour with L2). Point-LIO's
+# /aft_mapped_to_init (~12 kHz) and /path (whole path every scan) would bloat it; l2eval regenerates them.
+RECORD_TOPICS = ['/unilidar/cloud', '/unilidar/imu']
 
 
 def default_bag_path():
@@ -74,6 +75,14 @@ def generate_launch_description():
         ],
     )
 
+    data_watch = Node(
+        package='l2_bringup',
+        executable='l2_data_watch.py',
+        name='l2_data_watch',
+        remappings=[('cloud', '/unilidar/cloud'), ('imu', '/unilidar/imu')],
+        output='screen',
+    )
+
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -103,6 +112,7 @@ def generate_launch_description():
                               description='output directory of the recording'),
         driver,
         point_lio,
+        data_watch,
         rviz_node,
         recorder,
     ])

@@ -189,20 +189,31 @@ class MapMatcher:
         with ThreadPoolExecutor(4) as pool:              # FFTs release the GIL; more threads don't help
             return [c for cs in pool.map(one, yaws) for c in cs]
 
+    def agreement(self, points, r, t):
+        """Fraction of scan points (sensor frame) within 0.3 m of the map at pose (r, t)."""
+        d, _ = self.nn.query(points @ r.T + t)
+        return float((d < 0.3).mean())
+
     def ground_height(self, xy):
         i, j = np.floor((xy - self.origin) / CELL).astype(int)
         if not (0 <= i < self.shape[0] and 0 <= j < self.shape[1]) or np.isinf(self.ground[i, j]):
             return None
         return float(self.ground[i, j])
 
-    def estimate(self, local, sensor_height, screen=300, top=5):
+    def estimate(self, local, sensor_height, screen=300, top=5, near=None):
         """Returns (x, y, z, rotation, score_2d, inlier_ratio, runner_up_inlier_ratio) or None.
 
         local is leveled. Top-view candidates are screened with a quick ICP on few points, and
         the best few are refined with more points; the one whose scan lands on the map best wins.
+        near=(xy, radius) keeps only candidates within radius of xy (re-localization).
         """
         local = voxel_downsample(local, 0.1)        # a few seconds of L2 is ~200k points
-        cands = self.search(local, np.radians(np.arange(0, 360, 2.0)))
+        cands = self.search(local, np.radians(np.arange(0, 360, 2.0)),
+                            peaks=5 if near is None else 20)
+        if near is not None:
+            cands = [c for c in cands if np.hypot(*(c[2] - near[0])) <= near[1]]
+        if not cands:
+            return None
         cands.sort(key=lambda c: -c[0])
         rng = np.random.default_rng(0)
         few = local[rng.choice(len(local), min(800, len(local)), replace=False)]
@@ -270,70 +281,188 @@ def load_pcd_xyz(path):
     return a[:, [fields.index('x'), fields.index('y'), fields.index('z')]].astype(np.float64)
 
 
+def quat_to_rot(x, y, z, w):
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
 def main():
+    from collections import deque
+
     import rclpy
+    from rclpy.executors import ExternalShutdownException
     from geometry_msgs.msg import PoseWithCovarianceStamped
     from rclpy.node import Node
     from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import Imu, PointCloud2
     from sensor_msgs_py import point_cloud2
 
+    def stamp(m):
+        return m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
+
     class InitialPose(Node):
+        """Start pose (auto_init) and re-localization when tracking is lost (relocalize).
+
+        While tracking, every /pcl_pose is checked: the scan of the same time is put on the
+        map at that pose and the fraction of points that land on it is kept ("agreement").
+        When it stays low (or poses stop), tracking is declared lost; once the sensor stands
+        still (IMU) the scans are matched against the map again, first near the last good
+        pose, and the result is sent to lidar_localization as /initialpose.
+        """
+
         def __init__(self):
             super().__init__('l2_initial_pose')
-            self.map_path = self.declare_parameter('map_path', '').value
-            self.duration = self.declare_parameter('accumulate_sec', 3.0).value
-            self.frame_id = self.declare_parameter('global_frame_id', 'map').value
-            self.min_score = self.declare_parameter('min_inlier_ratio', 0.5).value
-            self.clouds, self.accels, self.start = [], [], None
+            p = self.declare_parameter
+            self.map_path = p('map_path', '').value
+            self.duration = p('accumulate_sec', 3.0).value
+            self.frame_id = p('global_frame_id', 'map').value
+            self.min_score = p('min_inlier_ratio', 0.5).value
+            self.auto_init = p('auto_init', True).value
+            self.relocalize = p('relocalize', False).value
+            self.lost_ratio = p('lost_agreement', 0.6).value      # tracking ~0.9, lost ~0.4
+            self.still_gyro = p('still_gyro', 0.05).value         # [rad/s]
+            self.still_sec = p('still_sec', 2.0).value
+            self.max_wait = p('max_wait_still_sec', 6.0).value
             self.get_logger().info(f'loading map {self.map_path}')
             t = time.time()
             self.matcher = MapMatcher(load_pcd_xyz(self.map_path))
-            self.get_logger().info(f'map ready ({time.time() - t:.1f} s). keep the sensor still '
-                                   f'for {self.duration:.0f} s')
+            self.get_logger().info(f'map ready ({time.time() - t:.1f} s)')
+            self.clouds = deque(maxlen=120)                 # (t, points) ~10 s
+            self.imu = deque(maxlen=3000)                   # (t, |gyro|, acc)
+            self.agree = deque(maxlen=200)                  # (t, agreement)
+            self.first_t = None
+            self.last_pose_t = None
+            self.last_good = None                           # (t, xy)
+            self.state = 'init' if self.auto_init else 'tracking'
+            self.attempts, self.next_try, self.lost_t, self.verify_t = 0, 0.0, None, None
+            if self.auto_init:
+                self.get_logger().info(f'keep the sensor still for {self.duration:.0f} s')
             self.pub = self.create_publisher(PoseWithCovarianceStamped, 'initialpose', 1)
             self.create_subscription(PointCloud2, 'cloud', self.on_cloud, qos_profile_sensor_data)
             self.create_subscription(Imu, 'imu', self.on_imu, qos_profile_sensor_data)
-            self.done = False
+            if self.relocalize:
+                self.create_subscription(PoseWithCovarianceStamped, 'pcl_pose', self.on_pose, 10)
 
+        # --- inputs ---------------------------------------------------------------------
         def on_imu(self, m):
-            if self.start is not None and not self.done:
-                a = m.linear_acceleration
-                self.accels.append((a.x, a.y, a.z))
+            g, a = m.angular_velocity, m.linear_acceleration
+            self.imu.append((stamp(m), math.sqrt(g.x ** 2 + g.y ** 2 + g.z ** 2), (a.x, a.y, a.z)))
 
         def on_cloud(self, m):
-            if self.done:
-                return
-            p = point_cloud2.read_points(m, field_names=('x', 'y', 'z'), skip_nans=True)
-            self.clouds.append(np.stack([p['x'], p['y'], p['z']], 1).astype(np.float64))
-            now = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
-            self.start = self.start or now
-            if now - self.start >= self.duration:
-                self.done = True
-                self.solve()
+            pts = point_cloud2.read_points(m, field_names=('x', 'y', 'z'), skip_nans=True)
+            pts = np.stack([pts['x'], pts['y'], pts['z']], 1).astype(np.float64)
+            t = stamp(m)
+            self.clouds.append((t, pts[np.linalg.norm(pts, axis=1) > 0.3]))
+            self.first_t = self.first_t or t
+            self.step(t)
 
-        def solve(self):
-            local = np.concatenate(self.clouds)
-            local = local[np.linalg.norm(local, axis=1) > 0.3]
-            if len(self.accels) > 10:
-                level = level_rotation(np.mean(self.accels, 0))
+        def on_pose(self, m):
+            t = stamp(m)
+            self.last_pose_t = t
+            match = [c for tc, c in self.clouds if abs(tc - t) < 0.02]
+            if not match:
+                return
+            q, o = m.pose.pose.orientation, m.pose.pose.position
+            pts = match[0][np.random.default_rng(0).choice(len(match[0]), min(500, len(match[0])),
+                                                           replace=False)]
+            ratio = self.matcher.agreement(pts, quat_to_rot(q.x, q.y, q.z, q.w),
+                                           np.array([o.x, o.y, o.z]))
+            self.agree.append((t, ratio))
+            if ratio >= 0.8:
+                self.last_good = (t, np.array([o.x, o.y]))
+
+        # --- state machine (driven by scan time, so it also works on bag replay) ---------
+        def step(self, t):
+            if self.state == 'init':
+                if t - self.first_t >= self.duration:
+                    self.solve(t, [c for _, c in self.clouds], self.first_t, None, 'start pose')
+                return
+            if not self.relocalize:
+                return
+            recent = [r for ta, r in self.agree if ta > t - 2.0]
+            if self.state in ('lost', 'init_failed') and len(recent) >= 5 and \
+                    np.median(recent) >= self.lost_ratio and \
+                    all(ta > (self.lost_t or 0.0) for ta, _ in self.agree if ta > t - 2.0):
+                # fixed by hand (2D Pose Estimate) or recovered on its own
+                self.get_logger().warn(f'復帰しました(agreement {np.median(recent):.2f})')
+                self.state = 'tracking'
+                return
+            if self.state == 'tracking':
+                # scans arrive but localization outputs nothing (rejected); a data gap is not this
+                no_pose = self.last_pose_t is not None and \
+                    sum(1 for tc, _ in self.clouds if tc > self.last_pose_t) >= 30
+                if (len(recent) >= 5 and np.median(recent) < self.lost_ratio) or no_pose:
+                    why = (f'agreement {np.median(recent):.2f}' if recent and not no_pose
+                           else 'no pose output')
+                    self.get_logger().error(f'位置を見失いました({why})。台車を止めて数秒待ってください。'
+                                            '地図上の位置を探し直します')
+                    self.state, self.lost_t, self.attempts, self.next_try = 'lost', t, 0, t
+            elif self.state == 'verify':
+                if self.verify_t is None:                    # first scan after the pose was sent
+                    self.verify_t = t
+                after = [r for ta, r in self.agree if ta > self.verify_t]
+                if t - self.verify_t >= 3.0:
+                    if len(after) >= 5 and np.median(after) >= self.lost_ratio:
+                        self.get_logger().warn(f'復帰しました(agreement {np.median(after):.2f})')
+                        self.state = 'tracking'
+                    else:
+                        self.get_logger().warn('探し直した位置が地図と合いません。もう一度探します')
+                        self.state, self.next_try = 'lost', t
+            elif self.state == 'lost' and t >= self.next_try:
+                still_from = self.still_since(t)
+                if still_from is not None and t - still_from >= self.still_sec:
+                    use_from = still_from
+                elif t - self.lost_t >= self.max_wait:
+                    use_from = t - 0.5                      # not stopping: try the latest scans
+                else:
+                    return
+                near = None
+                if self.last_good is not None and self.attempts < 3:
+                    near = (self.last_good[1], min(10.0 + 1.5 * (t - self.last_good[0]), 60.0))
+                self.attempts += 1
+                self.solve(t, [c for tc, c in self.clouds if tc >= use_from], use_from, near,
+                           're-localized')
+                if self.state == 'lost':
+                    self.next_try = t + 3.0
+
+        def still_since(self, t):
+            """Start of the current still period (|gyro| below threshold), or None if moving."""
+            since = None
+            for ti, g, _ in reversed(self.imu):
+                if ti > t:
+                    continue
+                if g > self.still_gyro:
+                    break
+                since = ti
+            return since
+
+        # --- matching ----------------------------------------------------------------
+        def solve(self, t, clouds, t_from, near, label):
+            local = np.concatenate(clouds)
+            acc = [a for ti, _, a in self.imu if t_from <= ti <= t]
+            if len(acc) > 10:
+                level = level_rotation(np.mean(acc, 0))
             else:
                 level = np.eye(3)
                 self.get_logger().warn('no IMU data; assuming the sensor is level')
             local = local @ level.T
-            near = local[np.hypot(local[:, 0], local[:, 1]) < 2.0, 2]
-            sensor_height = -float(np.percentile(near, 2)) if len(near) > 20 else 0.0
-            t = time.time()
-            best = self.matcher.estimate(local, sensor_height)
+            near_pts = local[np.hypot(local[:, 0], local[:, 1]) < 2.0, 2]
+            sensor_height = -float(np.percentile(near_pts, 2)) if len(near_pts) > 20 else 0.0
+            t0 = time.time()
+            best = self.matcher.estimate(local, sensor_height, near=near)
+            where = 'whole map' if near is None else f'within {near[1]:.0f} m of the last good pose'
             if best is None or best[5] < self.min_score:
-                self.get_logger().error(
-                    f'start pose not found (best: {best}). set it with 2D Pose Estimate in RViz')
+                self.get_logger().error(f'{label}: not found ({where}). '
+                                        'set it with 2D Pose Estimate in RViz if this repeats')
+                self.state = 'lost' if self.state != 'init' else 'init_failed'
                 return
             x, y, z, r, s2, s3, runner_up = best
             yaw = math.atan2(r[1, 0], r[0, 0])
             self.get_logger().info(
-                f'start pose: x={x:.2f} y={y:.2f} z={z:.2f} yaw={math.degrees(yaw):.1f} deg '
-                f'(inliers {s3:.2f}, runner-up elsewhere {runner_up:.2f}, {time.time() - t:.1f} s)')
+                f'{label}: x={x:.2f} y={y:.2f} z={z:.2f} yaw={math.degrees(yaw):.1f} deg '
+                f'(inliers {s3:.2f}, runner-up elsewhere {runner_up:.2f}, {where}, '
+                f'{time.time() - t0:.1f} s)')
             if s3 - runner_up < 0.05:
                 self.get_logger().warn('another place fits almost as well; check the pose in RViz '
                                        '(fix it with 2D Pose Estimate if wrong)')
@@ -345,12 +474,14 @@ def main():
             (msg.pose.pose.orientation.x, msg.pose.pose.orientation.y,
              msg.pose.pose.orientation.z, msg.pose.pose.orientation.w) = q
             self.pub.publish(msg)
+            self.state, self.verify_t = 'verify', None
+            self.agree.clear()
 
     rclpy.init()
     node = InitialPose()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):   # Ctrl+C / launch shutdown
         pass
 
 

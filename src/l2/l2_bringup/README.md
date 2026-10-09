@@ -48,6 +48,12 @@ ros2 launch l2_bringup localization.launch.py map:=... x:=1.5 y:=2.0 yaw:=90   #
   上位 300 候補を ICP で絞り込み → `/initialpose`)。約2〜4秒。別の場所の候補が僅差なら警告を出す。
   地図から作った模擬スキャンでは 50/50 だったが、**実機では 4 回中 1 回しか当たらなかった** (2026-10-02)。
   必ず RViz で確認すること。`init_map` は非圧縮 PCD (pcl_voxel_grid の出力は圧縮なので不可)。
+- `relocalize:=true`(既定): 推定位置でスキャンを地図に重ねた一致率を常に監視し、直近 2 秒の中央値が 0.6 未満
+  (または推定位置が出なくなった)なら「位置を見失いました」と表示。センサが 2 秒静止すると、最後に正しかった
+  位置の周辺を探し直して `/initialpose` に出し、3 秒間の一致率で確認して「復帰しました」と表示する
+  (`scripts/l2_initial_pose.py`)。10/7 の屋外の記録では、見失った区間の一致率が 0.34 → 0.99 に回復した。
+- `l2_data_watch.py`(mapping / localization 共通): 点群・IMU が 1 秒以上届かないと警告、戻ると途切れた秒数を表示。
+  USB-LAN アダプタが切れると数〜十数秒データが止まり、Point-LIO の地図が崩れたり位置を見失ったりするため。
 - `record:=true`: 生データ (`/unilidar/cloud`, `/unilidar/imu`) と推定結果を `~/bags/l2loc_日時` に ros2 bag で記録する
   (`mapping.launch.py` も同様)。
 - ドライバは `unilidar_imu -> unilidar_lidar` の TF を常に出していて、`base_link -> unilidar_lidar` と衝突する
@@ -67,6 +73,17 @@ tools/l2eval BAG MAP -x X -y Y -yaw DEG -n 名前 [-- -p voxel_leaf_size:=0.5 ..
 python3 tools/l2eval_dump.py BAG   # 実験中の /pcl_pose を live.csv に出し、開始姿勢を表示
 ```
 実機テストの手順は `docs/実機テスト手順_自己位置推定.md`。
+
+## 地図の後処理 (`tools/pcd_*`)
+
+Point-LIO が破綻して点が遠くへ飛んだ部分(ほうき星)の除去、(任意で)ループ補正、外れ点除去(CloudCompare)。
+手順は `docs/地図の後処理_手順書.md`。
+
+```bash
+python3 tools/pcd_trim.py MAP.pcd -o MAP_trim.pcd
+python3 tools/pcd_loopfix.py MAP_trim.pcd -o MAP_loop.pcd   # RESULT が "Do not use" なら使わない
+tools/pcd_sor.sh MAP_trim.pcd MAP_clean.pcd
+```
 
 ## RViz2 の描画 GPU
 

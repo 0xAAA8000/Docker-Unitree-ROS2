@@ -3,6 +3,7 @@
   ros2 launch l2_bringup localization.launch.py map:=/home/okamoto/maps/xxx.pcd
   ros2 launch l2_bringup localization.launch.py map:=... x:=1.0 y:=2.0 yaw:=90
   ros2 launch l2_bringup localization.launch.py map:=... auto_init:=true  # find the start pose
+  ros2 launch l2_bringup localization.launch.py map:=... relocalize:=false  # no re-localization
   ros2 launch l2_bringup localization.launch.py map:=... connection:=serial rviz:=false
   ros2 launch l2_bringup localization.launch.py map:=... record:=true   # ros2 bag to ~/bags/l2loc_<date>
 
@@ -36,8 +37,9 @@ NVIDIA_RENDER_ENV = (
     {'__NV_PRIME_RENDER_OFFLOAD': '1', '__GLX_VENDOR_LIBRARY_NAME': 'nvidia'}
     if glob.glob('/usr/lib/*/libGLX_nvidia.so.0') else {})
 
-# Raw sensor data + estimates, enough to replay and re-tune offline (~7 GB/hour with L2)
-RECORD_TOPICS = ['/unilidar/cloud', '/unilidar/imu', '/pcl_pose', '/path', '/tf', '/tf_static']
+# Raw sensor data + estimates, enough to replay and re-tune offline (~7 GB/hour with L2).
+# /path is left out: it republishes the whole path every scan.
+RECORD_TOPICS = ['/unilidar/cloud', '/unilidar/imu', '/pcl_pose', '/tf', '/tf_static']
 
 
 def default_bag_path():
@@ -82,15 +84,17 @@ def localization_node(context):
                   change_state(Transition.TRANSITION_ACTIVATE)],
     ))
     actions = [activate_when_configured, node, change_state(Transition.TRANSITION_CONFIGURE)]
-    if auto:
+    reloc = LaunchConfiguration('relocalize').perform(context).lower() == 'true'
+    if auto or reloc:
         init_map = LaunchConfiguration('init_map').perform(context) or \
             LaunchConfiguration('map').perform(context)
         actions.append(Node(
             package='l2_bringup',
             executable='l2_initial_pose.py',
             name='l2_initial_pose',
-            parameters=[{'map_path': init_map}],
-            remappings=[('cloud', '/unilidar/cloud'), ('imu', '/unilidar/imu')],
+            parameters=[{'map_path': init_map, 'auto_init': auto, 'relocalize': reloc}],
+            remappings=[('cloud', '/unilidar/cloud'), ('imu', '/unilidar/imu'),
+                        ('pcl_pose', '/pcl_pose'), ('initialpose', '/initialpose')],
             output='screen',
         ))
     return actions
@@ -113,6 +117,14 @@ def generate_launch_description():
         executable='static_transform_publisher',
         name='lidar_tf',
         arguments=['--frame-id', 'base_link', '--child-frame-id', 'unilidar_lidar'],
+    )
+
+    data_watch = Node(
+        package='l2_bringup',
+        executable='l2_data_watch.py',
+        name='l2_data_watch',
+        remappings=[('cloud', '/unilidar/cloud'), ('imu', '/unilidar/imu')],
+        output='screen',
     )
 
     rviz_node = Node(
@@ -140,8 +152,10 @@ def generate_launch_description():
         DeclareLaunchArgument('yaw', default_value='0.0', description='initial yaw [deg]'),
         DeclareLaunchArgument('auto_init', default_value='false',
                               description='estimate the start pose on the map (keep still ~3 s)'),
+        DeclareLaunchArgument('relocalize', default_value='true',
+                              description='find the pose on the map again when tracking is lost'),
         DeclareLaunchArgument('init_map', default_value='',
-                              description='map for auto_init (binary PCD); default: map'),
+                              description='map for auto_init / relocalize (binary PCD); default: map'),
         DeclareLaunchArgument('connection', default_value='ethernet',
                               description="'ethernet' or 'serial'"),
         DeclareLaunchArgument('rviz', default_value='true'),
@@ -152,6 +166,7 @@ def generate_launch_description():
         driver,
         lidar_tf,
         OpaqueFunction(function=localization_node),
+        data_watch,
         rviz_node,
         recorder,
     ])
