@@ -17,6 +17,8 @@ RUN apt update && apt install -y --no-install-recommends \
  && apt install -y --no-install-recommends \
     libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgbm1 mesa-libgallium \
  && rm -rf /var/lib/apt/lists/*
+COPY  wsl-gpu/ /opt/wsl-gpu/
+RUN gcc -O2 -shared -fPIC -o /usr/local/lib/libwsl_glibc_compat.so /opt/wsl-gpu/glibc_compat.c
 WORKDIR /ros2_ws
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

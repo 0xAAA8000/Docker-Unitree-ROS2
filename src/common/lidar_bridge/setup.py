@@ -1,3 +1,6 @@
+import os
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = 'lidar_bridge'
@@ -26,6 +29,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'lidar_bridge = lidar_bridge.lidar_bridge_node:main',
         ],
     },
 )

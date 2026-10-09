@@ -23,13 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # packages.ros.org の名前解決失敗の切り分け用（原因が分かったら削除）
-      - name: Debug DNS
-        run: |
-          cat /etc/resolv.conf
-          getent hosts packages.ros.org || echo "host: resolve failed"
-          docker run --rm ros:humble-ros-base getent hosts packages.ros.org || echo "container: resolve failed"
-
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/build-push-action@v6

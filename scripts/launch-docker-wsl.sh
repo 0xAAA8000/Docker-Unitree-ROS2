@@ -31,8 +31,19 @@ if [ "$DEV_MODE" = true ]; then
         exit 1
     fi
 
+    HOST_COMMON_SRC_PATH="$(pwd)/src/common"
+    if [ ! -d "$HOST_COMMON_SRC_PATH" ]; then
+        echo "error: mount target directory is not exist.: ${HOST_COMMON_SRC_PATH}"
+        exit 1
+    fi
+
     CONTAINER_SRC_PATH="/ros2_ws/src"
-    MOUNT_OPTION="-v ${HOST_SRC_PATH}:${CONTAINER_SRC_PATH}"
+    CONTAINER_COMMON_SRC_PATH="/opt/common_ws/src"
+    MOUNT_OPTIONS=()
+    MOUNT_OPTIONS+=(-v ${HOST_SRC_PATH}:${CONTAINER_SRC_PATH})
+    MOUNT_OPTIONS+=(-v ${HOST_COMMON_SRC_PATH}:${CONTAINER_COMMON_SRC_PATH})
+
+    echo "[ info ] Deb mode enabled. MOUNT_OPTIONS: ${MOUNT_OPTIONS[@]}"
 fi
 
 IMAGE="${IMAGE}/${TARGET}:latest"
@@ -61,10 +72,13 @@ if [ -d "/dev/dri" ]; then
     echo "[ info ] Driver Mounted"
 fi
 
+WSL_ARGS=()
+if [ -d "/usr/lib/wsl" ]; then
+    WSL_ARGS+=(-v /usr/lib/wsl:/usr/lib/wsl)
+    echo "[ info ] WSL lib Mounted"
+fi
+
 docker run -it --rm \
-    --platform linux/arm64 \
-    --device=/dev/dxg \
-    -v /usr/lib/wsl:/usr/lib/wsl-host:ro \
     "${GPU_ARGS[@]}" \
     --network host \
     --ipc host \
@@ -73,6 +87,7 @@ docker run -it --rm \
     -e QT_X11_NO_MITSHM=1 \
     -e XDG_RUNTIME_DIR=/tmp/runtime-root \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-    ${MOUNT_OPTION} \
+    "${MOUNT_OPTIONS[@]}" \
     "${DEVICE_ARGS[@]}" \
+    "${WSL_ARGS[@]}" \
     $IMAGE "${DOCKER_CMD[@]}"
