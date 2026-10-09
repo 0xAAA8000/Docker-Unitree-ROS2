@@ -4,6 +4,7 @@ set -e
 
 IMAGE="ghcr.io/0xaaa8000/docker-unitree-ros2"
 TARGET="sim"
+TAG="surface11"
 DEV_MODE=false
 DOCKER_CMD=()
 
@@ -14,6 +15,9 @@ for arg in "$@"; do
             ;;
         --target=*)
             TARGET="${arg#*=}"
+            ;;
+        --tag=*)
+            TAG="${arg#*=}"
             ;;
         --dev)
             DEV_MODE=true
@@ -46,7 +50,7 @@ if [ "$DEV_MODE" = true ]; then
     echo "[ info ] Deb mode enabled. MOUNT_OPTIONS: ${MOUNT_OPTIONS[@]}"
 fi
 
-IMAGE="${IMAGE}/${TARGET}:latest"
+IMAGE="${IMAGE}/${TARGET}:${TAG}"
 
 # コンテナからホストの X サーバへ接続できるようにする
 xhost +local:root >/dev/null 2>&1 || true
@@ -72,10 +76,15 @@ if [ -d "/dev/dri" ]; then
     echo "[ info ] Driver Mounted"
 fi
 
+# コンテナ内の /usr/lib/wsl は /opt/wsl-gpu/setup.sh が /usr/lib/wsl-host を元に組み立てる
 WSL_ARGS=()
 if [ -d "/usr/lib/wsl" ]; then
-    WSL_ARGS+=(-v /usr/lib/wsl:/usr/lib/wsl)
+    WSL_ARGS+=(-v /usr/lib/wsl:/usr/lib/wsl-host:ro)
     echo "[ info ] WSL lib Mounted"
+fi
+if [ -e "/dev/dxg" ]; then
+    WSL_ARGS+=(--device=/dev/dxg)
+    echo "[ info ] WSL GPU device (/dev/dxg) Mounted"
 fi
 
 docker run -it --rm \

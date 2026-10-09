@@ -9,10 +9,6 @@ if [ -f /usr/share/gazebo/setup.sh ]; then
     source /usr/share/gazebo/setup.sh
 fi
 
-if [ -f /opt/wsl-gpu/setup.sh ]; then
-    source /opt/wsl-gpu/setup.sh
-fi
-
 # CMD もしくは docker run の引数をそのまま実行する
 # 例: docker run ... <image> ros2 launch unitree_lidar_ros2 launch.py
 exec "$@"

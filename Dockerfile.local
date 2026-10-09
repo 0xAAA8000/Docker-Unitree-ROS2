@@ -12,15 +12,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # WSLg対応
 RUN apt update && apt install -y --no-install-recommends \
     software-properties-common gnupg ca-certificates \
+    patchelf gcc libc6-dev binutils python3 \
  && add-apt-repository -y ppa:kisak/turtle \
  && apt update \
  && apt install -y --no-install-recommends \
     libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgbm1 mesa-libgallium \
  && rm -rf /var/lib/apt/lists/*
-COPY  wsl-gpu/ /opt/wsl-gpu/
+# wsl-gpu は名前付きビルドコンテキスト (https://github.com/0xAAA8000/WSL-Qualcomm-GPU) から取得する
+# 例: docker build --build-context wsl-gpu=https://github.com/0xAAA8000/WSL-Qualcomm-GPU.git ...
+COPY --from=wsl-gpu glibc_compat.c setup.sh weaken_verneed.py /opt/wsl-gpu/
 RUN gcc -O2 -shared -fPIC -o /usr/local/lib/libwsl_glibc_compat.so /opt/wsl-gpu/glibc_compat.c
 WORKDIR /ros2_ws
-COPY entrypoint.sh /entrypoint.sh
+COPY entrypoint-wsl.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

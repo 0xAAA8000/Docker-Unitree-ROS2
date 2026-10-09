@@ -5,6 +5,7 @@
   * 静的 TF          : map -> camera_init, aft_mapped -> base_link,
                        base_link -> lidar_link, base_link -> imu_link
   * Point-LIO        : /lidar, /imu を購読 (point_lio:=false で起動しない)
+  * RViz             : Point-LIO の結果を表示 (rviz:=false で起動しない)
 
 LiDAR ドライバ (unitree_lidar_ros2) は別に起動しておくこと.
 Nav2 は robot_navigation の navigation.launch.py を
@@ -115,6 +116,14 @@ def _setup(context):
         parameters=point_lio_params,
         condition=IfCondition(LaunchConfiguration('point_lio')),
     ))
+    actions.append(Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz',
+        arguments=['-d', os.path.join(get_package_share_directory('point_lio'),
+                                      'rviz_cfg', 'loam_livox.rviz')],
+        condition=IfCondition(LaunchConfiguration('rviz')),
+    ))
     return actions
 
 
@@ -127,5 +136,7 @@ def generate_launch_description():
                               description='取付位置・フィルタの設定'),
         DeclareLaunchArgument('point_lio', default_value='true',
                               description='Point-LIO を起動するか'),
+        DeclareLaunchArgument('rviz', default_value='true',
+                              description='RViz を起動するか'),
         OpaqueFunction(function=_setup),
     ])
