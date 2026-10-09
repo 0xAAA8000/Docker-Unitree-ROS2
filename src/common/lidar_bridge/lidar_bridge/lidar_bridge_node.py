@@ -91,6 +91,12 @@ class LidarBridge(Node):
         self.self_max = np.array(p('self_box_max', [0.4, 0.25, 0.4]).value, dtype=float)
         self.range_min = p('range_min', 0.3).value                  # LiDAR からの距離 [m]
 
+        # IMU 加速度の 1 次ローパスのカットオフ [Hz] (0 以下で無効).
+        # LiDAR の回転で車体が振動し, そのノイズを Point-LIO が積分して静止中も動いてしまうため
+        self.acc_lpf_hz = p('imu_acc_lpf_hz', 0.0).value
+        self.acc_filt = None        # フィルタ後の加速度
+        self.imu_last_t = None      # 前回の IMU の時刻 [s]
+
         self.pub = self.create_publisher(PointCloud2, cloud_out, 10)
         self.pub_obs = self.create_publisher(PointCloud2, obstacles_out, 10)
         self.pub_imu = self.create_publisher(Imu, imu_out, 50)
@@ -99,11 +105,28 @@ class LidarBridge(Node):
 
         self.get_logger().info(
             f'{cloud_in} -> {cloud_out}, {obstacles_out} / {imu_in} -> {imu_out}  '
-            f'mount xyz={t} rpy[deg]={[round(math.degrees(a), 1) for a in rpy]}')
+            f'mount xyz={t} rpy[deg]={[round(math.degrees(a), 1) for a in rpy]}  '
+            f'imu_acc_lpf_hz={self.acc_lpf_hz}')
 
     def on_imu(self, msg):
         msg.header.frame_id = self.imu_frame
+        if self.acc_lpf_hz > 0.0:
+            self.filter_acc(msg)
         self.pub_imu.publish(msg)
+
+    def filter_acc(self, msg):
+        a = msg.linear_acceleration
+        acc = np.array([a.x, a.y, a.z])
+        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        dt = None if self.imu_last_t is None else t - self.imu_last_t
+        self.imu_last_t = t
+        if self.acc_filt is None or dt is None or not 0.0 < dt < 0.1:
+            # 初回・時刻の巻き戻り・長い途切れのあとはそのまま使ってやり直す
+            self.acc_filt = acc
+        else:
+            tau = 1.0 / (2.0 * math.pi * self.acc_lpf_hz)
+            self.acc_filt = self.acc_filt + dt / (tau + dt) * (acc - self.acc_filt)
+        a.x, a.y, a.z = (float(v) for v in self.acc_filt)
 
     def on_cloud(self, msg):
         pts = cloud_to_array(msg)

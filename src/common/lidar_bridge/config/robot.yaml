@@ -10,6 +10,8 @@ lidar_bridge:
     imu_out: /imu
     lidar_frame: lidar_link
     imu_frame: imu_link
+    # IMU 加速度のローパスのカットオフ [Hz]。0 で無効。LiDAR 回転による振動の除去用
+    imu_acc_lpf_hz: 20.0
 
     # base_link (Nav2 の footprint の中心) から見た LiDAR の位置 [m]
     lidar_x: 0.20

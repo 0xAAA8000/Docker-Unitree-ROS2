@@ -30,6 +30,7 @@ setup(
     entry_points={
         'console_scripts': [
             'lidar_bridge = lidar_bridge.lidar_bridge_node:main',
+            'sensor_check = lidar_bridge.sensor_check:main',
         ],
     },
 )
