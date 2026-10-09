@@ -1,0 +1,89 @@
+#!/bin/bash
+# Replay a recorded bag through localization and score it against Point-LIO
+#
+#   l2eval BAG MAP [-x X -y Y -z Z -yaw DEG] [-n NAME] [--rate R] [--l1] [-- ROS_PARAMS...]
+#
+#   l2eval ~/bags/l2loc_20261003_101500 ~/maps/l2_20261001_195440.pcd
+#   l2eval BAG MAP -n leaf0.5 -- -p voxel_leaf_size:=0.5     # try other parameters
+#
+# Results go to BAG_eval/ (results.md accumulates one row per run). The Point-LIO
+# reference (lio.csv) is made once per bag at 1x speed. Needs /unilidar/cloud and
+# /unilidar/imu in the bag (l2map -r / l2loc -r record both). --l1 uses L1 settings.
+
+usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+TOOLS=$(dirname "$(realpath "$0")")
+X=0.0; Y=0.0; Z=0.0; YAW=0.0
+NAME=""; RATE=2; LIO_LAUNCH=mapping_unilidar_l2.launch.py
+POS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -x) X="$2"; shift ;;
+        -y) Y="$2"; shift ;;
+        -z) Z="$2"; shift ;;
+        -yaw) YAW="$2"; shift ;;
+        -n) NAME="$2"; shift ;;
+        --rate) RATE="$2"; shift ;;
+        --l1) LIO_LAUNCH=mapping_unilidar_l1.launch.py ;;
+        -h|--help) usage ;;
+        --) shift; break ;;
+        -*) echo "unknown option: $1"; usage 1 ;;
+        *) POS+=("$1") ;;
+    esac
+    shift
+done
+EXTRA=("$@")
+[ ${#POS[@]} -eq 2 ] || usage 1
+BAG=$(realpath "${POS[0]}"); MAP=$(realpath "${POS[1]}")
+OUT="${BAG%/}_eval"
+NAME=${NAME:-run_$(date +%H%M%S)}
+mkdir -p "$OUT"
+
+# use the workspace already sourced (e.g. /ros2_ws in Docker); fall back to ~/ros2_ws on the host
+if ! ros2 pkg prefix l2_bringup > /dev/null 2>&1; then
+    source /opt/ros/humble/setup.bash
+    source ~/ros2_ws/install/setup.bash
+fi
+# isolated from anything running live on this PC
+export ROS_DOMAIN_ID=$((150 + RANDOM % 80))
+
+# stop only the processes started here (by PID), never live ones matched by name
+stop() { kill -INT "$@" 2>/dev/null; sleep 2; kill -9 "$@" 2>/dev/null; true; }
+
+# --- reference: Point-LIO on the same data --------------------------------------
+if [ ! -s "$OUT/lio.csv" ]; then
+    echo "[l2eval] 基準の軌跡を Point-LIO で作ります (bag と同じ時間かかります)"
+    ros2 launch point_lio $LIO_LAUNCH rviz:=false > "$OUT/lio.log" 2>&1 & LIO=$!
+    python3 "$TOOLS/l2eval_rec.py" "$OUT/lio.csv" & REC=$!
+    sleep 4
+    ros2 bag play "$BAG" --topics /unilidar/cloud /unilidar/imu > /dev/null 2>&1
+    sleep 3; kill -INT $REC; stop $LIO
+fi
+
+# --- localization run -------------------------------------------------------------
+QZ=$(python3 -c "import math; print(math.sin(math.radians($YAW) / 2))")
+QW=$(python3 -c "import math; print(math.cos(math.radians($YAW) / 2))")
+echo "[l2eval] $NAME: 自己位置推定を ${RATE} 倍速で再生します"
+"$(ros2 pkg prefix tf2_ros)/lib/tf2_ros/static_transform_publisher" \
+    --frame-id base_link --child-frame-id unilidar_lidar > /dev/null 2>&1 & TF=$!
+"$(ros2 pkg prefix lidar_localization_ros2)/lib/lidar_localization_ros2/lidar_localization_node" --ros-args \
+    --params-file "$(ros2 pkg prefix l2_bringup)/share/l2_bringup/config/localization.yaml" \
+    -p map_path:="$MAP" -p enable_debug:=true \
+    -p initial_pose_x:=$X -p initial_pose_y:=$Y -p initial_pose_z:=$Z \
+    -p initial_pose_qx:=0.0 -p initial_pose_qy:=0.0 -p initial_pose_qz:=$QZ -p initial_pose_qw:=$QW \
+    "${EXTRA[@]}" -r /cloud:=/unilidar/cloud > "$OUT/$NAME.log" 2>&1 & NODE=$!
+sleep 1.5
+ros2 lifecycle set /lidar_localization configure > /dev/null
+ros2 lifecycle set /lidar_localization activate > /dev/null
+python3 "$TOOLS/l2eval_rec.py" "$OUT/$NAME.csv" & REC=$!
+sleep 1
+ros2 bag play "$BAG" --topics /unilidar/cloud --rate "$RATE" > /dev/null 2>&1
+sleep 2; kill -INT $REC
+stop $NODE $TF
+echo "$NAME: ${EXTRA[*]}" >> "$OUT/params.txt"
+
+# --- report -----------------------------------------------------------------------
+ROW=$(python3 "$TOOLS/l2eval_report.py" "$OUT" "$NAME" | tail -1)
+[ -s "$OUT/results.md" ] || python3 "$TOOLS/l2eval_report.py" "$OUT" "$NAME" | head -2 > "$OUT/results.md"
+echo "$ROW" >> "$OUT/results.md"
+cat "$OUT/results.md"
