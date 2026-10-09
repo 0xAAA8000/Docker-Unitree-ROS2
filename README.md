@@ -86,6 +86,36 @@ L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
 を参照してください。
 
 
+## 実機で Nav2 を動かす (`lidar_bridge` / `robot_operation`)
+
+sim と同じトピック・TF にそろえて、Point-LIO → Nav2 → Arduino の順につなぎます。
+
+```
+unitree_lidar_ros2 ──/unilidar/cloud, /unilidar/imu──▶ lidar_bridge ──/lidar, /imu──▶ Point-LIO
+                                                                    └─/lidar, /lidar_obstacles──▶ Nav2 ──/cmd_vel──▶ cmd_vel_converter ──serial──▶ Arduino
+```
+
+```bash
+# 1. LiDAR ドライバ
+ros2 launch unitree_lidar_ros2 launch.py
+# 2. ブリッジ + 静的 TF + Point-LIO (L1 なら lidar:=l1)
+ros2 launch lidar_bridge real.launch.py lidar:=l2
+# 3. Nav2 (aft_mapped -> base_link は 2 が出すので publish_base_tf:=false)
+ros2 launch robot_navigation navigation.launch.py use_sim_time:=false publish_base_tf:=false cmd_vel_topic:=/cmd_vel
+# 4. Twist -> Arduino (最初は dry_run:=true で指令値だけ確認するとよい)
+ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
+```
+
+* LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
+  `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
+  base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。
+* `cmd_vel_converter` は Twist を `tan(δ) = L·ω / v` で舵角に、`sin(δ) = K·sin(φ − φ0)` でサーボ角に、
+  `throttle = deadband + v / gain` でスロットルに変換します。値は `calibration_file`
+  (calibrate_drive の `summary.yaml`) か `src/common/robot_operation/config/operation.yaml` から読みます。
+* `/cmd_vel` が 0.5 秒途絶えるとスロットル 0 を送ります。
+* LiDAR (L1 は `/dev/ttyUSB0`) と Arduino の USB シリアルが同じ名前にならないよう、
+  `port:=/dev/serial/by-id/...` で指定するのが確実です。
+
 ## 実機の走行キャリブレーション (`robot_operation calibrate_drive`)
 
 実機を自動で走らせて、次の2つの対応を Point-LIO のオドメトリから計測します。
