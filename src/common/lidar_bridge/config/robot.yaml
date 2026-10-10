@@ -11,7 +11,11 @@ lidar_bridge:
     lidar_frame: lidar_link
     imu_frame: imu_link
     # IMU 加速度のローパスのカットオフ [Hz]。0 で無効。LiDAR 回転による振動の除去用
-    imu_acc_lpf_hz: 20.0
+    imu_acc_lpf_hz: 0.0    # 有効にする場合の目安: 20.0
+    # 点群がこの時間 [s] 以上届かなければ, その場で回転だけしている (回転はジャイロのとおり,
+    # 平行移動はしない) とみなして Point-LIO への点群と IMU の加速度を補完する。
+    # IMU が届かないときは静止として補完する。途切れ後に自己位置が飛んで流れ続けるのを防ぐ。0 で無効
+    gap_fill_timeout: 0.0  # 有効にする場合の目安: 0.3
 
     # base_link (Nav2 の footprint の中心) から見た LiDAR の位置 [m]
     lidar_x: 0.20
@@ -23,7 +27,7 @@ lidar_bridge:
     lidar_yaw_deg: 0.0
 
     # 以下は base_link 座標 [m]
-    ground_z: -0.10               # 地面の z
+    ground_z: -0.10               # base_linkから見た地面の z
     obstacle_min_height: 0.15     # 地面からこの高さ以上を障害物とする
     obstacle_max_height: 0.50     # 地面からこの高さ未満を障害物とする
     self_box_min: [-0.40, -0.25, -0.20]   # 自車体の点を除く箱

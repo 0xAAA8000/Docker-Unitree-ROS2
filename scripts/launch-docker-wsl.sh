@@ -60,6 +60,13 @@ if [ -e /dev/ttyUSB0 ]; then
     DEVICE_ARGS+=(--device=/dev/ttyUSB0)
     echo "[ info ] USB LiDAR Enable"
 fi
+# Arduino (cmd_vel_converter が使う)。コンテナ起動時に挿さっているものだけ渡される
+for dev in /dev/ttyACM*; do
+    if [ -e "$dev" ]; then
+        DEVICE_ARGS+=(--device=$dev)
+        echo "[ info ] Arduino Enable: $dev"
+    fi
+done
 
 GPU_ARGS=()
 if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia; then
