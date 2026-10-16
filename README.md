@@ -116,6 +116,20 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
 * LiDAR (L1 は `/dev/ttyUSB0`) と Arduino の USB シリアルが同じ名前にならないよう、
   `port:=/dev/serial/by-id/...` で指定するのが確実です。
 
+### 決めた秒数だけ前進して点群を記録する (`drive_forward`)
+
+上の 1, 2, 4 を起動した状態 (Nav2 は不要) で実行します。`/cmd_vel` に一定速度を送り、
+`--bag` を付けると走り出す前から止まった後までの生データと Point-LIO の出力を記録します。
+
+```bash
+ros2 run robot_operation drive_forward --speed 0.3 --duration 5 --bag /opt/common_ws/src/bags/forward1
+```
+
+* 記録先はコンテナを終了しても消えない、マウントしている場所 (`/opt/common_ws/src` など) にします。
+* Ctrl-C で中止すると速度 0 を送ってから終了します。
+* Point-LIO が作った地図は、real.launch.py を Ctrl-C で終了したときに
+  `src/common/point_lio_ros2/PCD/scans.pcd` に保存されます。
+
 ## 実機の走行キャリブレーション (`robot_operation calibrate_drive`)
 
 実機を自動で走らせて、次の2つの対応を Point-LIO のオドメトリから計測します。

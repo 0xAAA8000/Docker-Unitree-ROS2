@@ -71,6 +71,12 @@ def _setup(context):
     r_inv = r.T
     t_inv = -r_inv @ t
 
+    # 起動引数で指定されたものだけ robot.yaml の値を上書きする
+    bridge_overrides = {}
+    gap_fill = LaunchConfiguration('gap_fill_timeout').perform(context)
+    if gap_fill:
+        bridge_overrides['gap_fill_timeout'] = float(gap_fill)
+
     lidar_frame = prm.get('lidar_frame', 'lidar_link')
     imu_frame = prm.get('imu_frame', 'imu_link')
     actions = [
@@ -79,7 +85,7 @@ def _setup(context):
             executable='lidar_bridge',
             name='lidar_bridge',
             output='screen',
-            parameters=[config],
+            parameters=[config, bridge_overrides],
         ),
         _static_tf('map_to_camera_init', 'map', 'camera_init', (0, 0, 0), (0, 0, 0)),
         _static_tf('aft_mapped_to_base_link', 'aft_mapped', 'base_link', t_inv, _rpy(r_inv)),
@@ -108,11 +114,12 @@ def _setup(context):
             'filter_size_map': 0.1,
             'cube_side_length': 1000.0,
             'runtime_pos_log_enable': False,
-            # 実機は LiDAR の回転で車体ごと振動し, その加速度ノイズを積分して静止中も
-            # 動いていると推定してしまう. IMU の加速度を信用しすぎないようにする
-            # (yaml の値はそれぞれ 0.1, 500.0)
+            # IMU の信用度. 大きくすると振動には強くなるが, 手で回転させた試験 (点群の途切れなし)
+            # では回転中にずれるようになったので, 初期値は小さい値 (IMU を信用する) にしている
             'mapping.imu_meas_acc_cov': float(LaunchConfiguration('imu_acc_cov').perform(context)),
             'mapping.acc_cov_output': float(LaunchConfiguration('acc_cov_output').perform(context)),
+            'mapping.imu_meas_omg_cov': float(LaunchConfiguration('imu_omg_cov').perform(context)),
+            'mapping.gyr_cov_output': float(LaunchConfiguration('gyr_cov_output').perform(context)),
         },
     ]
     actions.append(Node(
@@ -141,14 +148,20 @@ def generate_launch_description():
                               description='LiDAR の機種 (Point-LIO の設定ファイルの選択)'),
         DeclareLaunchArgument('config', default_value=os.path.join(pkg, 'config', 'robot.yaml'),
                               description='取付位置・フィルタの設定'),
+        DeclareLaunchArgument('gap_fill_timeout', default_value='',
+                              description='点群の途切れの補完を始めるまでの時間 [s] (0 で無効, 空なら robot.yaml の値)'),
         DeclareLaunchArgument('point_lio', default_value='true',
                               description='Point-LIO を起動するか'),
         DeclareLaunchArgument('rviz', default_value='true',
                               description='RViz を起動するか'),
-        DeclareLaunchArgument('imu_acc_cov', default_value='2.0',
+        DeclareLaunchArgument('imu_acc_cov', default_value='0.1',
                               description='Point-LIO の IMU 加速度の観測分散 (大きいほど IMU を信用しない)'),
-        DeclareLaunchArgument('acc_cov_output', default_value='10.0',
+        DeclareLaunchArgument('acc_cov_output', default_value='1000.0',
                               description='Point-LIO の加速度のプロセスノイズ (小さいほど加速度の推定が滑らか)'),
+        DeclareLaunchArgument('imu_omg_cov', default_value='0.1',
+                              description='Point-LIO の IMU 角速度の観測分散 (大きいほど IMU を信用しない)'),
+        DeclareLaunchArgument('gyr_cov_output', default_value='1000.0',
+                              description='Point-LIO の角速度のプロセスノイズ (小さいほど角速度の推定が滑らか)'),
         DeclareLaunchArgument('init_map_size', default_value='1000',
                               description='Point-LIO が最初の地図を作るのに使う点の数の下限'),
         OpaqueFunction(function=_setup),

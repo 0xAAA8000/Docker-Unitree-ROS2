@@ -5,3 +5,6 @@ log/
 .git/
 gazebo_sim/model/
 .vscode
+
+# drive_forward / ros2 bag の記録 (コンテナからはマウント先の /opt/common_ws/src/bags)
+src/common/bags/

@@ -31,6 +31,7 @@ setup(
         'console_scripts': [
             'calibrate_drive = robot_operation.calibrate_drive:main',
             'cmd_vel_converter = robot_operation.cmd_vel_converter:main',
+            'drive_forward = robot_operation.drive_forward:main',
         ],
     },
 )
