@@ -154,6 +154,33 @@ ros2 run robot_operation calibrate_drive --wheelbase <ホイールベース[m]> 
 * Ctrl-C、またはオドメトリが 0.5 秒途絶えた場合は、スロットル 0・サーボ中央を送って止めます。ただし Arduino 側にはタイムアウトがないので、USB が抜けたときに備えてすぐ止められる状態で使ってください。
 * 主なオプション: `--throttles 15,20,30`, `--servos 40,55,70,85,100,115,130`, `--steer-throttle 25`, `--max-distance 3.0`, `--pause` (区間ごとに Enter 待ち)。一覧は `--help` で確認できます。
 
+## 一括起動と目的地の指定 (`robot_bringup` / `robot_goal`)
+
+LiDAR ドライバ、lidar_bridge + Point-LIO、Nav2、Arduino 変換を 1 つのコマンドで起動します。
+
+```bash
+ros2 launch robot_bringup robot.launch.py                       # 機種は $ROS2_TARGET (無ければ l2)
+ros2 launch robot_bringup robot.launch.py lidar:=l1 lidar_port:=/dev/serial/by-id/... \
+    arduino_port:=/dev/serial/by-id/... calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
+ros2 launch robot_bringup robot.launch.py dry_run:=true         # Arduino に送らずログだけ
+ros2 launch robot_bringup robot.launch.py nav:=false operation:=false   # 地図作り・確認だけ
+```
+
+* `driver` / `point_lio` / `nav` / `operation` / `rviz` を `false` にするとその部分を起動しません
+  (`rviz` は既定で `false`。PC 側で開く)。
+* Nav2 は Point-LIO の TF が出始めるのを待つため `nav_delay` 秒 (既定 5) 後に起動します。
+
+目的地は別のターミナルから送ります (座標は `map`、Point-LIO の起動位置が原点)。
+
+```bash
+ros2 run robot_goal goal 3.0 1.5        # (3.0, 1.5) へ。向きは今のまま
+ros2 run robot_goal goal 3.0 1.5 90     # 到着時の向き [deg]
+ros2 run robot_goal goal --rel 2.0 0    # 今の位置・向きから見て前に 2 m
+ros2 run robot_goal goal                # 対話モード (h でヘルプ, c で取り消し, p で現在地)
+```
+
+到着・失敗まで残り距離を表示し、Ctrl-C でゴールを取り消して終了します。
+
 ## ラズパイに直接入れる (Docker なし)
 
 Raspberry Pi (Ubuntu 22.04 / arm64) には、コンテナと同じ ROS 2 Humble をそのまま入れられます。
