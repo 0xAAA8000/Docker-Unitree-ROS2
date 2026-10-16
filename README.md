@@ -154,6 +154,58 @@ ros2 run robot_operation calibrate_drive --wheelbase <ホイールベース[m]> 
 * Ctrl-C、またはオドメトリが 0.5 秒途絶えた場合は、スロットル 0・サーボ中央を送って止めます。ただし Arduino 側にはタイムアウトがないので、USB が抜けたときに備えてすぐ止められる状態で使ってください。
 * 主なオプション: `--throttles 15,20,30`, `--servos 40,55,70,85,100,115,130`, `--steer-throttle 25`, `--max-distance 3.0`, `--pause` (区間ごとに Enter 待ち)。一覧は `--help` で確認できます。
 
+## 一括起動と目的地の指定 (`robot_bringup` / `robot_goal`)
+
+LiDAR ドライバ、lidar_bridge + Point-LIO、Nav2、Arduino 変換を 1 つのコマンドで起動します。
+
+```bash
+ros2 launch robot_bringup robot.launch.py                       # 機種は $ROS2_TARGET (無ければ l2)
+ros2 launch robot_bringup robot.launch.py lidar:=l1 lidar_port:=/dev/serial/by-id/... \
+    arduino_port:=/dev/serial/by-id/... calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
+ros2 launch robot_bringup robot.launch.py dry_run:=true         # Arduino に送らずログだけ
+ros2 launch robot_bringup robot.launch.py nav:=false operation:=false   # 地図作り・確認だけ
+```
+
+* `driver` / `point_lio` / `nav` / `operation` / `rviz` を `false` にするとその部分を起動しません
+  (`rviz` は既定で `false`。PC 側で開く)。
+* Nav2 は Point-LIO の TF が出始めるのを待つため `nav_delay` 秒 (既定 5) 後に起動します。
+
+目的地は別のターミナルから送ります (座標は `map`、Point-LIO の起動位置が原点)。
+
+```bash
+ros2 run robot_goal goal 3.0 1.5        # (3.0, 1.5) へ。向きは今のまま
+ros2 run robot_goal goal 3.0 1.5 90     # 到着時の向き [deg]
+ros2 run robot_goal goal --rel 2.0 0    # 今の位置・向きから見て前に 2 m
+ros2 run robot_goal goal                # 対話モード (h でヘルプ, c で取り消し, p で現在地)
+```
+
+到着・失敗まで残り距離を表示し、Ctrl-C でゴールを取り消して終了します。
+
+## ラズパイに直接入れる (Docker なし)
+
+Raspberry Pi (Ubuntu 22.04 / arm64) には、コンテナと同じ ROS 2 Humble をそのまま入れられます。
+`scripts/setup-raspi.sh` が ROS 2 のインストール、依存パッケージ、`dialout` グループへの追加、
+ビルド、`~/.bashrc` への設定追記までを行います (何度実行してもよい)。
+
+```bash
+git clone https://github.com/0xAAA8000/Docker-Unitree-ROS2.git ~/Docker-Unitree-ROS2
+cd ~/Docker-Unitree-ROS2
+./scripts/setup-raspi.sh l1          # L2 なら l2。l1 と l2 は同じワークスペースに入れられない
+# メモリ不足で Point-LIO のビルドが落ちるときは JOBS=1 ./scripts/setup-raspi.sh l1
+source ~/.bashrc
+```
+
+* ビルド先は `~/ros2_ws` (`WS=` で変更可)。`--symlink-install` なので、リポジトリの yaml / launch /
+  Python を書き換えれば再ビルドなしで反映されます。C++ を変えたら同じスクリプトを再実行します。
+* 起動手順は上の「実機で Nav2 を動かす」と同じです (コンテナに入る代わりに、ラズパイのターミナルで実行)。
+* rviz2 は入れていません。同じネットワークの PC で `ROS_DOMAIN_ID` をそろえて rviz2 を開きます
+  (ラズパイにも入れるなら `WITH_RVIZ=1`)。
+* ラズパイには RTC が無いので、起動直後は時計がずれていて、NTP で同期した瞬間に時刻が飛びます。
+  Point-LIO は時刻が戻ると `loop back` でデータを捨てるので、`timedatectl` で
+  `System clock synchronized: yes` になってから起動してください。
+* L1 (`/dev/ttyUSB*`) と Arduino (`/dev/ttyACM*`) は挿す順で番号が変わることがあるので、
+  `/dev/serial/by-id/...` で指定するのが確実です。
+
 ## Point-LIO のバージョンについて
 
 Unitree 公式の [unitreerobotics/point_lio_unilidar](https://github.com/unitreerobotics/point_lio_unilidar)
