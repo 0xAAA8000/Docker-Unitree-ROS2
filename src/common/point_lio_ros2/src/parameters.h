@@ -30,7 +30,6 @@ extern double cube_len;
 extern float DET_RANGE;
 extern bool imu_en, gravity_align, non_station_start;
 extern double imu_time_inte;
-extern double max_prop_dt;
 extern double laser_point_cov, acc_norm;
 extern double acc_cov_input, gyr_cov_input, vel_cov;
 extern double gyr_cov_output, acc_cov_output, b_gyr_cov, b_acc_cov;
