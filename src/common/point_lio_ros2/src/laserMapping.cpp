@@ -78,6 +78,15 @@ geometry_msgs::msg::PoseStamped msg_body_pose;
 
 auto logger = rclcpp::get_logger("laserMapping");
 
+// Local addition (not upstream): after the LiDAR/IMU stream stalls, predicting over the whole gap
+// adds vel * dt and a huge covariance at once, and the next scan can lock onto a wrong place.
+// Cap the propagation interval at mapping.max_prop_dt (<= 0 disables the cap).
+double limit_prop_dt(double dt, bool warn) {
+    if (max_prop_dt <= 0.0 || dt <= max_prop_dt) return dt;
+    if (warn) RCLCPP_WARN(logger, "data gap %.3f s, propagation limited to %.3f s", dt, max_prop_dt);
+    return max_prop_dt;
+}
+
 void SigHandle(int sig) {
     flg_exit = true;
     RCLCPP_WARN(logger, "catch sig %d", sig);
@@ -1000,7 +1009,7 @@ int main(int argc, char **argv) {
                             imu_last = imu_next;
                             imu_next = *(imu_deque.front());
                             imu_deque.pop_front();
-                            double dt = get_time_sec(imu_last.header.stamp) - time_predict_last_const;
+                            double dt = limit_prop_dt(get_time_sec(imu_last.header.stamp) - time_predict_last_const, true);
                             kf_output.predict(dt, Q_output, input_in, true, false);
                             time_predict_last_const = get_time_sec(imu_last.header.stamp); // big problem
                             imu_comes = time_current > get_time_sec(imu_next.header.stamp);
@@ -1012,7 +1021,7 @@ int main(int argc, char **argv) {
                                     time_update_last = get_time_sec(imu_last.header.stamp);
                                     double propag_imu_start = omp_get_wtime();
 
-                                    kf_output.predict(dt_cov, Q_output, input_in, false, true);
+                                    kf_output.predict(limit_prop_dt(dt_cov, false), Q_output, input_in, false, true);
 
                                     propag_time += omp_get_wtime() - propag_imu_start;
                                     double solve_imu_start = omp_get_wtime();
@@ -1023,12 +1032,12 @@ int main(int argc, char **argv) {
                         }
                     }
 
-                    double dt = time_current - time_predict_last_const;
+                    double dt = limit_prop_dt(time_current - time_predict_last_const, true);
                     double propag_state_start = omp_get_wtime();
                     if (!prop_at_freq_of_imu) {
                         double dt_cov = time_current - time_update_last;
                         if (dt_cov > 0.0) {
-                            kf_output.predict(dt_cov, Q_output, input_in, false, true);
+                            kf_output.predict(limit_prop_dt(dt_cov, false), Q_output, input_in, false, true);
                             time_update_last = time_current;
                         }
                     }

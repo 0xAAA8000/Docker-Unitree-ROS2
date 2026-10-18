@@ -9,6 +9,7 @@
     Point-LIO は IMU がスキャン終了時刻に追いつくまで待つので, ここが大きく外れていると
     IMU の積分区間と点群の時刻が合わず, 静止していても位置が流れる.
   * 受信遅れ: 受信時刻 (このPCの時計) - stamp
+  * stamp の間隔が gap_imu / gap_cloud を超えたら, その場で「途切れた」と表示する
 """
 import math
 
@@ -39,6 +40,9 @@ class CheckInputs(Node):
         cloud = self.declare_parameter('cloud', '/unilidar/cloud').value
         imu = self.declare_parameter('imu', '/unilidar/imu').value
         period = self.declare_parameter('period', 5.0).value
+        # stamp の間隔がこれを超えたら途切れとしてすぐ表示する [s]
+        self.gap_imu = self.declare_parameter('gap_imu', 0.05).value
+        self.gap_cloud = self.declare_parameter('gap_cloud', 0.3).value
         self.reset()
         self.last_imu_stamp = None
         self.create_subscription(Imu, imu, self.on_imu, qos_profile_sensor_data)
@@ -70,6 +74,8 @@ class CheckInputs(Node):
             if t <= self.prev_imu:
                 self.imu_back += 1
             self.imu_dt.append(t - self.prev_imu)
+            if t - self.prev_imu > self.gap_imu:
+                self.get_logger().warn(f'IMU が {t - self.prev_imu:.3f} s 途切れた')
         self.prev_imu = t
         self.last_imu_stamp = t
         a = msg.linear_acceleration
@@ -82,6 +88,8 @@ class CheckInputs(Node):
         t = sec(msg.header.stamp)
         if self.prev_cloud is not None:
             self.cloud_dt.append(t - self.prev_cloud)
+            if t - self.prev_cloud > self.gap_cloud:
+                self.get_logger().warn(f'点群が {t - self.prev_cloud:.3f} s 途切れた')
         self.prev_cloud = t
         pts = cloud_to_array(msg)
         self.cloud_n.append(len(pts))
