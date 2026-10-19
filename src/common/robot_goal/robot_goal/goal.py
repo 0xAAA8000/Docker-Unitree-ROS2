@@ -57,7 +57,7 @@ class GoalClient(Node):
         self.client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-        self.handle = None
+        self.goal_handle = None
         self.done = threading.Event()
         self.done.set()
         self.last_feedback = 0.0
@@ -98,7 +98,7 @@ class GoalClient(Node):
             print('ゴールが受け付けられなかった')
             self.done.set()
             return
-        self.handle = handle
+        self.goal_handle = handle
         handle.get_result_async().add_done_callback(self.on_result)
 
     def on_feedback(self, msg):
@@ -113,13 +113,13 @@ class GoalClient(Node):
     def on_result(self, future):
         status = future.result().status
         print(f'結果: {STATUS.get(status, f"status={status}")}')
-        self.handle = None
+        self.goal_handle = None
         self.done.set()
 
     def cancel(self):
-        if self.handle is None:
+        if self.goal_handle is None:
             return False
-        self.handle.cancel_goal_async()
+        self.goal_handle.cancel_goal_async()
         return True
 
 
