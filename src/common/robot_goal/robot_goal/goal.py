@@ -11,13 +11,13 @@ import argparse
 import math
 import sys
 import threading
+import time
 
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 import rclpy
 from rclpy.action import ActionClient
-from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
@@ -50,10 +50,11 @@ def quat_to_yaw(q):
 
 class GoalClient(Node):
 
-    def __init__(self, frame, base_frame):
+    def __init__(self, frame, base_frame, tf_timeout):
         super().__init__('robot_goal')
         self.frame = frame
         self.base_frame = base_frame
+        self.tf_timeout = tf_timeout
         self.client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -65,13 +66,24 @@ class GoalClient(Node):
 
     def pose(self):
         """map 座標での今の (x, y, yaw). TF が無ければ None."""
+        # 起動直後は他ノードの発見 (DDS) と TF の受信に数秒かかる (ラズパイでは特に) ので,
+        # tf2_echo と同じように届くまで待つ. Buffer の timeout 付き待ちには頼らず自分で確かめる
+        deadline = time.monotonic() + self.tf_timeout
+        waited = False
+        while not self.tf_buffer.can_transform(self.frame, self.base_frame, Time()):
+            if time.monotonic() > deadline:
+                self.get_logger().error(
+                    f'{self.tf_timeout:.0f} s 待っても {self.frame} -> {self.base_frame} の TF が来ない')
+                self.report_tf_chain()
+                return None
+            if not waited:
+                print(f'{self.frame} -> {self.base_frame} の TF を待っています...')
+                waited = True
+            time.sleep(0.1)
         try:
-            # 起動直後は TF を受け取っていないので少し待つ
-            t = self.tf_buffer.lookup_transform(self.frame, self.base_frame, Time(),
-                                                timeout=Duration(seconds=3.0))
+            t = self.tf_buffer.lookup_transform(self.frame, self.base_frame, Time())
         except tf2_ros.TransformException as e:
             self.get_logger().error(f'{self.frame} -> {self.base_frame} の TF が取れない: {e}')
-            self.report_tf_chain()
             return None
         p = t.transform.translation
         return p.x, p.y, quat_to_yaw(t.transform.rotation)
@@ -196,11 +208,13 @@ def main():
     ap.add_argument('--rel', action='store_true', help='今の位置・向きから見た相対座標 (前 X, 左 Y)')
     ap.add_argument('--frame', default='map', help='ゴールの座標系 (既定: map)')
     ap.add_argument('--base-frame', default='base_link', help='ロボットの座標系 (既定: base_link)')
+    ap.add_argument('--tf-timeout', type=float, default=10.0,
+                    help='TF が届くまで待つ秒数 (既定: 10)')
     args = ap.parse_args(remove_ros_args(sys.argv)[1:])
 
     # rclpy の SIGINT ハンドラは context を落としてゴールを取り消せなくなるので使わない
     rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
-    node = GoalClient(args.frame, args.base_frame)
+    node = GoalClient(args.frame, args.base_frame, args.tf_timeout)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
     threading.Thread(target=executor.spin, daemon=True).start()
