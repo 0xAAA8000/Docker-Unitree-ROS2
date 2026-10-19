@@ -66,13 +66,26 @@ class GoalClient(Node):
     def pose(self):
         """map 座標での今の (x, y, yaw). TF が無ければ None."""
         try:
+            # 起動直後は TF を受け取っていないので少し待つ
             t = self.tf_buffer.lookup_transform(self.frame, self.base_frame, Time(),
-                                                timeout=Duration(seconds=1.0))
+                                                timeout=Duration(seconds=3.0))
         except tf2_ros.TransformException as e:
             self.get_logger().error(f'{self.frame} -> {self.base_frame} の TF が取れない: {e}')
+            self.report_tf_chain()
             return None
         p = t.transform.translation
         return p.x, p.y, quat_to_yaw(t.transform.rotation)
+
+    def report_tf_chain(self):
+        """実機の TF の各段がそろっているかを表示する (どこで切れているかの手がかり)."""
+        chain = [
+            ('map', 'camera_init', 'lidar_bridge real.launch.py の静的 TF'),
+            ('camera_init', 'aft_mapped', 'Point-LIO (IMU 初期化と最初の地図ができてから出る)'),
+            ('aft_mapped', 'base_link', 'lidar_bridge real.launch.py の静的 TF'),
+        ]
+        for parent, child, source in chain:
+            ok = self.tf_buffer.can_transform(parent, child, Time())
+            print(f'  {parent} -> {child}: {"OK" if ok else "無い"}  ({source})')
 
     def send(self, x, y, yaw):
         if not self.client.wait_for_server(timeout_sec=5.0):
