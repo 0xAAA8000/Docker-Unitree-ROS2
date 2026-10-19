@@ -98,6 +98,9 @@ class GoalClient(Node):
         for parent, child, source in chain:
             ok = self.tf_buffer.can_transform(parent, child, Time())
             print(f'  {parent} -> {child}: {"OK" if ok else "無い"}  ({source})')
+        frames = self.tf_buffer.all_frames_as_string().strip()
+        print('このノードが受け取った TF:')
+        print(frames or '  (何も受け取っていない: /tf, /tf_static が届いていない)')
 
     def send(self, x, y, yaw):
         if not self.client.wait_for_server(timeout_sec=5.0):
