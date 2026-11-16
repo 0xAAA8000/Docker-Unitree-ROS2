@@ -64,7 +64,7 @@ pkgs=(
     ros-humble-xacro ros-humble-robot-state-publisher
     ros-humble-navigation2 ros-humble-nav2-bringup
     ros-humble-sensor-msgs-py
-    python3-colcon-common-extensions python3-rosdep
+    build-essential cmake python3-colcon-common-extensions python3-rosdep
     libpcl-dev libeigen3-dev libomp-dev python3-dev
     python3-serial python3-yaml python3-numpy
 )
