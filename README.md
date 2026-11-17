@@ -112,6 +112,8 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
 * 床が障害物として扱われる (Nav2 の経路が作れない) ときは、取付角度か `ground_z` が実機とずれています。
   平らな床に止めて LiDAR ドライバだけ起動し、`ros2 run lidar_bridge ground_check` を実行すると、
   床の点から `lidar_pitch_deg` / `lidar_roll_deg` / `ground_z` を推定して今の値と並べて表示します。
+  ロボットから 1 m 以内に障害物の点があれば (車体や取付台が写っている)、
+  それを含む `self_box_min` / `self_box_max` の例も表示します。
 * `cmd_vel_converter` は Twist を `tan(δ) = L·ω / v` で舵角に、`sin(δ) = K·sin(φ − φ0)` でサーボ角に、
   `throttle = deadband + v / gain` でスロットルに変換します。値は `calibration_file`
   (calibrate_drive の `summary.yaml`) か `src/common/robot_operation/config/operation.yaml` から読みます。
@@ -251,6 +253,14 @@ ros2 run robot_goal web --ros-args -p port:=8081 -p token:=abcd
 | 追従 / 全体 | ロボットを中心に表示 / 観測済みの範囲を全部表示 |
 
 上の帯に、地図・現在地の受信状況、Nav2 の接続、走行状態と残り距離が出ます。
+
+Nav2 の costmap を見るときは、表示する地図を差し替えた 2 つ目の Web サーバーを起動します
+(`http://<IP>:8081`)。黒が障害物、赤がロボットの中心が入るとぶつかる範囲、
+オレンジが障害物から離れたい範囲 (濃いほど近い) です。
+
+```bash
+ros2 run robot_goal web --ros-args -r __node:=costmap_web -p map_topic:=/global_costmap/costmap -p port:=8081
+```
 
 ### 地図の作り方 (`robot_map`)
 

@@ -30,7 +30,7 @@ from rclpy.time import Time
 import tf2_ros
 
 from robot_goal.goal import quat_to_yaw, yaw_to_quat
-from robot_goal.web_server import encode_png_gray, known_bounds, make_server, occupancy_to_gray
+from robot_goal.web_server import encode_png, known_bounds, make_server, occupancy_to_image
 
 RESULT = {
     GoalStatus.STATUS_SUCCEEDED: 'succeeded',
@@ -77,7 +77,7 @@ class WebGoal(Node):
         info = msg.info
         if info.width == 0 or info.height == 0:
             return
-        png = encode_png_gray(occupancy_to_gray(msg.data, info.width, info.height))
+        png = encode_png(occupancy_to_image(msg.data, info.width, info.height))
         known = known_bounds(msg.data, info.width, info.height, info.resolution,
                              info.origin.position.x, info.origin.position.y)
         with self.lock:

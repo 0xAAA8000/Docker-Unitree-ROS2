@@ -19,18 +19,40 @@ import zlib
 
 import numpy as np
 
-# 地図の色 (グレースケール)
-GRAY_FREE = 255
-GRAY_UNKNOWN = 190
-GRAY_OCCUPIED = 30
+# 地図の色. OccupancyGrid の値 0..100 をそのまま色番号にし, 未知 (-1) は 101 番にする.
+#   0 (空き) は白, 100 (障害物) は黒.
+#   1..98 は costmap の「近寄りたくない度合い」で, 薄いオレンジから濃いオレンジ.
+#   99 は costmap の「ロボットの中心がここに来るとぶつかる」範囲で赤.
+#   robot_map の /map は 0 / 100 / 未知 しか使わない.
+UNKNOWN_INDEX = 101
 
 
-def occupancy_to_gray(data, width, height):
-    """OccupancyGrid の data (行 0 が y の小さい側) を, 上が y の大きい側の画像にする."""
+def _palette():
+    pal = []
+    for v in range(102):
+        if v == 0:
+            c = (255, 255, 255)
+        elif v < 99:
+            f = (v - 1) / 97.0
+            c = (255, int(240 - 110 * f), int(215 - 175 * f))
+        elif v == 99:
+            c = (210, 50, 40)
+        elif v == 100:
+            c = (30, 30, 30)
+        else:
+            c = (190, 190, 190)
+        pal.append(c)
+    return bytes(b for c in pal for b in c)
+
+
+PALETTE = _palette()
+
+
+def occupancy_to_image(data, width, height):
+    """OccupancyGrid の data (行 0 が y の小さい側) を, 上が y の大きい側の色番号の画像にする."""
     occ = np.frombuffer(bytes(data), np.int8, count=width * height).reshape(height, width)
-    img = np.full(occ.shape, GRAY_UNKNOWN, np.uint8)
-    img[(occ >= 0) & (occ < 50)] = GRAY_FREE
-    img[occ >= 50] = GRAY_OCCUPIED
+    img = np.clip(occ, 0, 100).astype(np.uint8)
+    img[occ < 0] = UNKNOWN_INDEX
     return np.ascontiguousarray(img[::-1])
 
 
@@ -46,8 +68,8 @@ def known_bounds(data, width, height, resolution, origin_x, origin_y):
             float(origin_y + (rows[-1] + 1) * resolution)]
 
 
-def encode_png_gray(img):
-    """(高さ, 幅) uint8 配列を 8bit グレースケール PNG にする."""
+def encode_png(img, palette=PALETTE):
+    """(高さ, 幅) uint8 の色番号の画像を, palette (RGB の並び) の 8bit パレット PNG にする."""
     h, w = img.shape
     raw = np.zeros((h, w + 1), np.uint8)   # 各行の先頭はフィルタ種別 (0 = なし)
     raw[:, 1:] = img
@@ -56,8 +78,8 @@ def encode_png_gray(img):
         c = kind + body
         return len(body).to_bytes(4, 'big') + c + zlib.crc32(c).to_bytes(4, 'big')
 
-    ihdr = w.to_bytes(4, 'big') + h.to_bytes(4, 'big') + bytes([8, 0, 0, 0, 0])
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr)
+    ihdr = w.to_bytes(4, 'big') + h.to_bytes(4, 'big') + bytes([8, 3, 0, 0, 0])
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'PLTE', palette)
             + chunk(b'IDAT', zlib.compress(raw.tobytes(), 6)) + chunk(b'IEND', b''))
 
 

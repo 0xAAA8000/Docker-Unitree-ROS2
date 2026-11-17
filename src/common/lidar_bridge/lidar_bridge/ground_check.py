@@ -100,6 +100,20 @@ def suggest(xyz_lidar, mount, rng=None):
     }
 
 
+def near_obstacles(xyz_lidar, mount, self_min, self_max, radius=1.0):
+    """lidar_bridge が障害物とする点のうち, base_link から水平 radius [m] 以内の点 (base_link 座標).
+
+    車体や LiDAR の取付台が写っていると, ここに出る. self_box_min / self_box_max で除く.
+    """
+    rot = rotation_rpy(*[math.radians(mount[f'lidar_{k}_deg']) for k in ('roll', 'pitch', 'yaw')])
+    base = xyz_lidar @ rot.T + np.array([mount['lidar_x'], mount['lidar_y'], mount['lidar_z']])
+    in_self = np.all((base > self_min) & (base < self_max), axis=1)
+    h = base[:, 2] - mount['ground_z']
+    obs = ~in_self & (h > mount['obstacle_min_height']) & (h < mount['obstacle_max_height'])
+    near = obs & (np.hypot(base[:, 0], base[:, 1]) < radius)
+    return base[near]
+
+
 class GroundCheck(Node):
 
     def __init__(self):
@@ -120,6 +134,8 @@ class GroundCheck(Node):
             ('lidar_pitch_deg', 0.0), ('lidar_yaw_deg', 0.0), ('ground_z', -0.1),
             ('obstacle_min_height', 0.15), ('obstacle_max_height', 0.5))}
         self.range_min = float(prm.get('range_min', 0.3))
+        self.self_min = np.array(prm.get('self_box_min', [-0.4, -0.25, -0.2]), dtype=float)
+        self.self_max = np.array(prm.get('self_box_max', [0.4, 0.25, 0.4]), dtype=float)
         self.buf = []
         self.create_subscription(PointCloud2, topic, self.on_cloud, qos_profile_sensor_data)
         self.create_timer(PERIOD, self.report)
@@ -144,6 +160,7 @@ class GroundCheck(Node):
         self.buf = []
         if len(xyz) > 60000:
             xyz = xyz[np.random.default_rng().choice(len(xyz), 60000, replace=False)]
+        self.report_near(xyz)
         s = suggest(xyz, self.mount)
         if s is None:
             self.get_logger().warn('床の平面が見つからない (LiDAR の前 0.5-6 m に床が見えている?)')
@@ -158,6 +175,22 @@ class GroundCheck(Node):
             f'  推定値: lidar_roll_deg {s["roll_deg"]:.1f} (今 {m["lidar_roll_deg"]:.1f})  '
             f'lidar_pitch_deg {s["pitch_deg"]:.1f} (今 {m["lidar_pitch_deg"]:.1f})  '
             f'ground_z {s["ground_z"]:.3f} (今 {m["ground_z"]:.3f})', flush=True)
+
+    def report_near(self, xyz):
+        near = near_obstacles(xyz, self.mount, self.self_min, self.self_max)
+        fmt = lambda v: '[' + ', '.join(f'{x:.2f}' for x in v) + ']'  # noqa: E731
+        if len(near) < 5:
+            print(f'\nロボットから 1 m 以内の障害物の点: なし (自車体を除く箱 {fmt(self.self_min)}'
+                  f' - {fmt(self.self_max)})', flush=True)
+            return
+        lo, hi = near.min(axis=0), near.max(axis=0)
+        print(
+            f'\nロボットから 1 m 以内の障害物の点: {len(near)} 点, 範囲 (base_link) '
+            f'{fmt(lo)} - {fmt(hi)}\n'
+            f'  周りに本当の障害物が無いのにここに点があるなら, 車体や取付台が写っている.\n'
+            f'  self_box_min / self_box_max (今 {fmt(self.self_min)} - {fmt(self.self_max)}) を\n'
+            f'  この範囲を含むよう広げる: 例 self_box_min {fmt(np.minimum(self.self_min, lo - 0.03))}'
+            f'  self_box_max {fmt(np.maximum(self.self_max, hi + 0.03))}', flush=True)
 
 
 def main():
