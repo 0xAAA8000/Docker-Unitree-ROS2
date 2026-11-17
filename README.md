@@ -109,6 +109,9 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
 * LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
   `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。
+* 床が障害物として扱われる (Nav2 の経路が作れない) ときは、取付角度か `ground_z` が実機とずれています。
+  平らな床に止めて LiDAR ドライバだけ起動し、`ros2 run lidar_bridge ground_check` を実行すると、
+  床の点から `lidar_pitch_deg` / `lidar_roll_deg` / `ground_z` を推定して今の値と並べて表示します。
 * `cmd_vel_converter` は Twist を `tan(δ) = L·ω / v` で舵角に、`sin(δ) = K·sin(φ − φ0)` でサーボ角に、
   `throttle = deadband + v / gain` でスロットルに変換します。値は `calibration_file`
   (calibrate_drive の `summary.yaml`) か `src/common/robot_operation/config/operation.yaml` から読みます。

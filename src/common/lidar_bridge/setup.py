@@ -33,6 +33,7 @@ setup(
             'check_inputs = lidar_bridge.check_inputs_node:main',
             'sensor_check = lidar_bridge.sensor_check:main',
             'watch_gaps = lidar_bridge.watch_gaps:main',
+            'ground_check = lidar_bridge.ground_check:main',
         ],
     },
 )
