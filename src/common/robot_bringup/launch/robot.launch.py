@@ -29,11 +29,20 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _launch(pkg, name):
-    return PythonLaunchDescriptionSource(
-        os.path.join(get_package_share_directory(pkg), 'launch', name))
+    """share/<pkg>/launch/<name>. 無ければ share/<pkg>/<name>.
+
+    unitree_lidar_ros2 (L1 / L2) は launch.py を launch/ ではなく share/<pkg>/ の直下に入れる.
+    """
+    share = get_package_share_directory(pkg)
+    path = os.path.join(share, 'launch', name)
+    if not os.path.exists(path) and os.path.exists(os.path.join(share, name)):
+        path = os.path.join(share, name)
+    return PythonLaunchDescriptionSource(path)
 
 
 def _driver(context):
+    if LaunchConfiguration('driver').perform(context).lower() not in ('true', '1'):
+        return []   # driver:=false ならドライバのパッケージを探さない
     lidar = LaunchConfiguration('lidar').perform(context)
     enabled = IfCondition(LaunchConfiguration('driver'))
     if lidar == 'l1':
