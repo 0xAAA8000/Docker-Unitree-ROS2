@@ -4,7 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node, SetRemap
 from nav2_common.launch import RewrittenYaml
 
@@ -90,7 +90,12 @@ def generate_launch_description():
     nav2_group = GroupAction(
         actions=[
             # トピックのリマップ(経路)を設定。型変換はしてない。
-            SetRemap(src='/cmd_vel', dst=cmd_vel_topic),
+            # 実機 (cmd_vel_topic:=/cmd_vel) では付け替えない。/cmd_vel -> /cmd_vel の付け替えは
+            # Nav2 自身の付け替え (cmd_vel -> cmd_vel_nav) より優先されるため, velocity_smoother が
+            # /cmd_vel を読んで /cmd_vel に書くループになり, 動き出さない・止まらない原因になる
+            SetRemap(src='/cmd_vel', dst=cmd_vel_topic,
+                     condition=IfCondition(PythonExpression(
+                         ["'", cmd_vel_topic, "' != '/cmd_vel'"]))),
             
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
