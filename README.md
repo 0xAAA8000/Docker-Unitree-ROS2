@@ -182,6 +182,25 @@ ros2 run robot_goal goal                # 対話モード (h でヘルプ, c で
 
 到着・失敗まで残り距離を表示し、Ctrl-C でゴールを取り消して終了します。
 
+### Arduino を挿したら自動で起動する (`install-autostart.sh`)
+
+Arduino (`/dev/ttyACM0`) が現れたら上の `robot.launch.py` を起動し、抜いたら止めます。
+udev が systemd のサービス `robot-bringup.service` を起動する仕組みです。
+
+```bash
+./scripts/install-autostart.sh l2          # sudo は付けない (ロボットを動かすユーザーで実行). L1 なら l1
+./scripts/install-autostart.sh uninstall   # 元に戻す
+```
+
+* 設定は `/etc/default/robot-bringup` に書きます (ワークスペースの場所、`ROS_DOMAIN_ID`、
+  launch 引数 `ROBOT_LAUNCH_ARGS="calibration_file:=... web_token:=..."` など)。
+  変更したら `sudo systemctl restart robot-bringup` するか、Arduino を挿し直します。
+* ログは `journalctl -u robot-bringup -f`、状態は `systemctl status robot-bringup` で見ます。
+* systemd から起動したプロセスは `~/.bashrc` を読みません。そのため
+  `scripts/autostart/robot-bringup.sh` が ROS とワークスペースの `setup.bash` を読み込んでから起動します。
+* 止めるときは `ros2 launch` にだけ SIGINT を送り、各ノードは launch が順に止めます (Ctrl-C と同じ)。
+* 起動に失敗したら 10 秒後にやり直します (LiDAR やネットワークの準備がまだのとき)。
+
 ## スマホから地図をタップして目的地を送る (`robot_map` / `robot_goal web`)
 
 走りながら 2D 地図を作り、同じ Wi-Fi につないだスマホのブラウザでその地図をタップして目的地を送ります。
