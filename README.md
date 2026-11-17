@@ -101,11 +101,14 @@ ros2 launch unitree_lidar_ros2 launch.py
 # 2. ブリッジ + 静的 TF + Point-LIO (L1 なら lidar:=l1)
 ros2 launch lidar_bridge real.launch.py lidar:=l2
 # 3. Nav2 (aft_mapped -> base_link は 2 が出すので publish_base_tf:=false)
-ros2 launch robot_navigation navigation.launch.py use_sim_time:=false publish_base_tf:=false cmd_vel_topic:=/cmd_vel
+ros2 launch robot_navigation navigation.launch.py use_sim_time:=false publish_base_tf:=false cmd_vel_topic:=/cmd_vel \
+    params_file:=$(ros2 pkg prefix robot_navigation)/share/robot_navigation/config/nav2_params_real.yaml
 # 4. Twist -> Arduino (最初は dry_run:=true で指令値だけ確認するとよい)
 ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
 ```
 
+* Nav2 のパラメータは実機用が `src/common/robot_navigation/config/nav2_params_real.yaml`
+  (前後 0.50 m x 横幅 0.30 m の車体、幅 0.80 m のドアを通れる設定)、sim 用が `nav2_params.yaml` です。
 * LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
   `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。

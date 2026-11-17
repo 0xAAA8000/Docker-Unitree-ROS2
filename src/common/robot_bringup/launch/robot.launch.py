@@ -82,7 +82,7 @@ def _driver(context):
 
 def generate_launch_description():
     nav_params = os.path.join(get_package_share_directory('robot_navigation'),
-                              'config', 'nav2_params.yaml')
+                              'config', 'nav2_params_real.yaml')   # 実機の車体用
 
     point_lio = IncludeLaunchDescription(
         _launch('lidar_bridge', 'real.launch.py'),
