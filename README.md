@@ -156,7 +156,8 @@ ros2 run robot_operation calibrate_drive --wheelbase <ホイールベース[m]> 
 
 ## 一括起動と目的地の指定 (`robot_bringup` / `robot_goal`)
 
-LiDAR ドライバ、lidar_bridge + Point-LIO、Nav2、Arduino 変換を 1 つのコマンドで起動します。
+LiDAR ドライバ、lidar_bridge + Point-LIO、Nav2、Arduino 変換、2D 地図 (`robot_map`)、
+スマホ用の Web サーバー (`robot_goal web`) を 1 つのコマンドで起動します。
 
 ```bash
 ros2 launch robot_bringup robot.launch.py                       # 機種は $ROS2_TARGET (無ければ l2)
@@ -166,8 +167,8 @@ ros2 launch robot_bringup robot.launch.py dry_run:=true         # Arduino に送
 ros2 launch robot_bringup robot.launch.py nav:=false operation:=false   # 地図作り・確認だけ
 ```
 
-* `driver` / `point_lio` / `nav` / `operation` / `rviz` を `false` にするとその部分を起動しません
-  (`rviz` は既定で `false`。PC 側で開く)。
+* `driver` / `point_lio` / `nav` / `operation` / `map` / `web` / `rviz` を `false` にすると
+  その部分を起動しません (`rviz` は既定で `false`。PC 側で開く)。
 * Nav2 は Point-LIO の TF が出始めるのを待つため `nav_delay` 秒 (既定 5) 後に起動します。
 
 目的地は別のターミナルから送ります (座標は `map`、Point-LIO の起動位置が原点)。
@@ -180,6 +181,70 @@ ros2 run robot_goal goal                # 対話モード (h でヘルプ, c で
 ```
 
 到着・失敗まで残り距離を表示し、Ctrl-C でゴールを取り消して終了します。
+
+## スマホから地図をタップして目的地を送る (`robot_map` / `robot_goal web`)
+
+走りながら 2D 地図を作り、同じ Wi-Fi につないだスマホのブラウザでその地図をタップして目的地を送ります。
+2D 地図を作るのは `robot_map` だけで、Web 画面、RViz (`Map2D` 表示)、必要なら Nav2 がその `/map` を共有します。
+
+![LiDAR から地図・Web・走行までのデータの流れ](docs/images/data_flow.svg)
+
+線の色はデータの種類 (橙: 3D 点群、青: 2D 地図・経路、灰: IMU・オドメトリ・指令、緑: HTTP)、
+破線は任意またはファイル経由です。トピック名は `real.launch.py` で起動したときの実際の名前です。
+
+### 起動
+
+`robot.launch.py` で一緒に起動します (既定で `map:=true web:=true`)。起動ログに
+`スマホで開く: http://192.168.x.x:8080` と出るので、そのアドレスをスマホで開きます。
+
+```bash
+ros2 launch robot_bringup robot.launch.py                        # 地図作り + Web
+ros2 launch robot_bringup robot.launch.py web_token:=abcd        # http://<IP>:8080/?key=abcd の人だけ操作できる
+ros2 launch robot_bringup robot.launch.py map_pcd:=$HOME/maps/scans.pcd   # 保存済みの地図から始める
+```
+
+単体で起動する場合:
+
+```bash
+ros2 launch robot_map map.launch.py                  # /cloud_registered -> /map
+ros2 run robot_goal web                              # /map を表示, ポート 8080
+ros2 run robot_goal web --ros-args -p port:=8081 -p token:=abcd
+```
+
+* Web サーバーはノードを動かしているマシンで開きます。Point-LIO と同じマシン
+  (ラズパイなど) で動かすと、点群を Wi-Fi 越しに送らずに済みます。
+* `ufw` などのファイアウォールを使っている場合はポートを開けます: `sudo ufw allow 8080/tcp`
+* スマホがインターネットにつながっていなくても動きます (画面は全部このノードから配信)。
+* `web_token` を付けないと、同じ Wi-Fi にいる人なら誰でもロボットを動かせます。
+
+### 画面の操作
+
+| 操作 | 内容 |
+| --- | --- |
+| 地図をタップ | 目的地の候補 (橙) を置く。向きは今の向きのまま |
+| 候補の印からドラッグ | 到着時の向きを指定する |
+| 1 本指でドラッグ / 2 本指で広げる・縮める | 地図の移動 / 拡大・縮小 (移動すると「追従」が切れる) |
+| この地点へ送信 | 候補を Nav2 に送る (送るまでは走り出さない) |
+| 停止 (取消) | 走行中のゴールを取り消す |
+| 追従 / 全体 | ロボットを中心に表示 / 観測済みの範囲を全部表示 |
+
+上の帯に、地図・現在地の受信状況、Nav2 の接続、走行状態と残り距離が出ます。
+
+### 地図の作り方 (`robot_map`)
+
+Point-LIO の `/cloud_registered` (map 座標の点群、毎スキャン) を base_link 座標に直して高さで分け、
+5 cm 四方のセルごとに数えます。
+
+* 床から ±`floor_tolerance` (5 cm) の点 → 床、`obstacle_min_height`〜`obstacle_max_height` の点 → 障害物。
+  `ground_z` と障害物の高さは lidar_bridge の `robot.yaml` と同じ値を使います。
+* 障害物の点が 3 回以上で、かつ床の点の半分以上ならそのセルは占有、床だけなら空き、どちらも無ければ未知です。
+  人が横切った跡は、その後に床がたくさん見えれば空きに戻ります。
+* ロボットから `max_range` (15 m) より遠い点は使いません。
+* `/map` は変化があったときに 1 秒ごとに配信します (transient_local なので、後から起動したノードも受け取れます)。
+* `pcd_file` を指定すると、保存済みの地図 (Point-LIO の `scans.pcd` など) を最初に読み込みます。
+  床の高さは点の高さの分布から自動で推定します (`pcd_ground_z` で指定も可)。
+* Nav2 は今のところ `/map` を使いません (global costmap は rolling window のまま)。
+
 
 ## ラズパイに直接入れる (Docker なし)
 

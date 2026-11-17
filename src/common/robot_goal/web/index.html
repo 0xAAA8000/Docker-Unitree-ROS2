@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b2027">
+<title>ロボットの目的地</title>
+<style>
+:root {
+  --bg: #e9ecef; --panel: #ffffff; --fg: #1b2027; --muted: #5d6773; --line: #c9cfd6;
+  --accent: #1769c2; --accent-fg: #ffffff; --stop: #c62828; --stop-fg: #ffffff;
+  --cand: #e8590c; --goal: #2b8a3e; --robot: #1769c2; --plan: #1769c2; --warn: #b26a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101317; --panel: #1b2027; --fg: #e8ebef; --muted: #9aa4b1; --line: #343c46;
+    --accent: #3d8bfd; --stop: #e5484d; --cand: #ff8a3d; --goal: #46c26a; --robot: #5aa9ff;
+    --plan: #5aa9ff; --warn: #f0b429; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font: 15px/1.4 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
+#app { display: flex; flex-direction: column; height: 100%; }
+#status { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center;
+  padding: calc(6px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px));
+  background: var(--panel); border-bottom: 1px solid var(--line); font-size: 13px; }
+#status .pill { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+#status .ok { color: var(--goal); border-color: var(--goal); }
+#status .bad { color: var(--stop); border-color: var(--stop); }
+#status .warn { color: var(--warn); border-color: var(--warn); }
+#goaltext { font-weight: 600; }
+#stage { position: relative; flex: 1; min-height: 0; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+#hint { position: absolute; left: 12px; right: 12px; top: 10px; text-align: center; pointer-events: none;
+  color: var(--muted); font-size: 13px; }
+#hint span { background: var(--panel); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); }
+#side { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 44px; display: flex; flex-direction: column; gap: 8px; }
+#side button { width: 52px; height: 44px; font-size: 13px; }
+#panel { background: var(--panel); border-top: 1px solid var(--line);
+  padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  display: grid; gap: 8px; }
+#cand { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 14px; }
+#cand .txt { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+#row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+button { font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
+  color: var(--fg); padding: 0 12px; cursor: pointer; }
+button:disabled { opacity: 0.4; }
+button.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+#cancel { height: 56px; background: var(--stop); color: var(--stop-fg); border-color: var(--stop); font-weight: 700; font-size: 17px; }
+#send { height: 56px; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; font-size: 17px; }
+#clear { height: 32px; padding: 0 10px; }
+#toast { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--fg); color: var(--bg);
+  padding: 8px 14px; border-radius: 8px; font-size: 14px; max-width: 90%; text-align: center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="status">
+    <span id="conn" class="pill">接続中…</span>
+    <span id="nav" class="pill">Nav2 -</span>
+    <span id="goaltext">目的地なし</span>
+    <span id="detail"></span>
+  </div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hint"><span id="hinttext">地図を待っています</span></div>
+    <div id="side">
+      <button id="follow" class="on" title="ロボットを画面の中心に保つ">追従</button>
+      <button id="fit" title="地図全体を表示">全体</button>
+    </div>
+    <div id="toast" hidden></div>
+  </div>
+  <div id="panel">
+    <div id="cand"><span class="txt" id="candtext">地図をタップして目的地を置く</span>
+      <button id="clear" hidden>消す</button></div>
+    <div id="row">
+      <button id="cancel">停止 (取消)</button>
+      <button id="send" disabled>この地点へ送信</button>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  'use strict';
+  const key = new URLSearchParams(location.search).get('key') || '';
+  const api = (p) => key ? p + (p.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(key) : p;
+  const $ = (id) => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // 表示: 画面中心の map 座標 (cx, cy) と 1 m あたりの画素数 s
+  const view = { cx: 0, cy: 0, s: 40 };
+  let follow = true, fitted = false;
+  let st = null;               // /api/state
+  let map = null;              // { img, meta }
+  let loadingVersion = -1;
+  let cand = null;             // { x, y, yaw | null }
+  let dirty = true;
+
+  const W = () => cv.clientWidth, H = () => cv.clientHeight;
+  const toScreen = (x, y) => [W() / 2 + (x - view.cx) * view.s, H() / 2 - (y - view.cy) * view.s];
+  const toWorld = (px, py) => [view.cx + (px - W() / 2) / view.s, view.cy - (py - H() / 2) / view.s];
+  const deg = (r) => Math.round(r * 180 / Math.PI);
+
+  function resize() {
+    const r = window.devicePixelRatio || 1;
+    cv.width = Math.round(cv.clientWidth * r);
+    cv.height = Math.round(cv.clientHeight * r);
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+    dirty = true;
+  }
+  window.addEventListener('resize', resize);
+
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => { t.hidden = true; }, 2500);
+  }
+
+  function fitMap() {
+    if (!map) return;
+    const m = map.meta;
+    // 観測済みの範囲に合わせる (格子は未知の余白を含んで広がるため)
+    const [x0, y0, x1, y1] = m.known || [m.origin_x, m.origin_y,
+      m.origin_x + m.width * m.resolution, m.origin_y + m.height * m.resolution];
+    const w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1);
+    view.cx = (x0 + x1) / 2; view.cy = (y0 + y1) / 2;
+    view.s = Math.max(2, Math.min(400, 0.9 * Math.min(W() / w, H() / h)));
+    dirty = true;
+  }
+
+  // ---------- 描画 ----------
+  function arrow(x, y, yaw, len, color, width) {
+    const [sx, sy] = toScreen(x, y);
+    const ex = sx + Math.cos(yaw) * len, ey = sy - Math.sin(yaw) * len;
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    const a = Math.atan2(sy - ey, ex - sx), hl = 9;
+    ctx.beginPath(); ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - hl * Math.cos(a - 0.5), ey + hl * Math.sin(a - 0.5));
+    ctx.lineTo(ex - hl * Math.cos(a + 0.5), ey + hl * Math.sin(a + 0.5));
+    ctx.closePath(); ctx.fill();
+  }
+
+  function marker(x, y, yaw, color) {
+    const [sx, sy] = toScreen(x, y);
+    ctx.fillStyle = color; ctx.strokeStyle = css('--panel'); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx, sy, 9, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    if (yaw !== null && yaw !== undefined) arrow(x, y, yaw, 34, color, 3);
+  }
+
+  function draw() {
+    dirty = false;
+    const w = W(), h = H();
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = css('--bg'); ctx.fillRect(0, 0, w, h);
+    if (map) {
+      const m = map.meta;
+      const [x0, y0] = toScreen(m.origin_x, m.origin_y + m.height * m.resolution);
+      ctx.imageSmoothingEnabled = view.s * m.resolution < 1;
+      ctx.drawImage(map.img, x0, y0, m.width * m.resolution * view.s, m.height * m.resolution * view.s);
+    }
+    if (st && st.plan && st.plan.length > 1) {
+      ctx.strokeStyle = css('--plan'); ctx.lineWidth = 3; ctx.setLineDash([]);
+      ctx.beginPath();
+      st.plan.forEach(([x, y], i) => { const [sx, sy] = toScreen(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+      ctx.stroke();
+    }
+    const g = st && st.goal;
+    if (g && (g.status === 'active' || g.status === 'sending')) marker(g.x, g.y, g.yaw, css('--goal'));
+    if (cand) marker(cand.x, cand.y, cand.yaw, css('--cand'));
+    if (st && st.pose) {
+      const p = st.pose, [sx, sy] = toScreen(p.x, p.y), r = Math.max(10, 0.3 * view.s);
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(-p.yaw);
+      ctx.fillStyle = css('--robot'); ctx.strokeStyle = css('--panel'); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(r, 0); ctx.lineTo(-0.7 * r, 0.6 * r); ctx.lineTo(-0.4 * r, 0); ctx.lineTo(-0.7 * r, -0.6 * r);
+      ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    // 縮尺
+    const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+    const meters = steps.find((v) => v * view.s >= 60) || 100;
+    const bx = 14, by = h - 16, bw = meters * view.s;
+    ctx.strokeStyle = css('--fg'); ctx.fillStyle = css('--fg'); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(bx, by - 5); ctx.lineTo(bx, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by - 5); ctx.stroke();
+    ctx.font = '12px system-ui, sans-serif'; ctx.fillText(meters + ' m', bx + 4, by - 7);
+  }
+
+  function loop() { if (dirty) draw(); requestAnimationFrame(loop); }
+
+  // ---------- 表示の更新 ----------
+  const GOAL_TEXT = {
+    idle: '目的地なし', sending: '送信中…', active: '走行中', succeeded: '到着',
+    aborted: '失敗 (Nav2 が中止)', canceled: '取り消し', rejected: '受け付けられなかった',
+  };
+
+  function updateStatus(ok) {
+    const conn = $('conn');
+    if (!ok) { conn.textContent = '接続できません'; conn.className = 'pill bad'; return; }
+    const warn = [];
+    if (!st.map) warn.push('地図なし');
+    else if (st.map.age > 10) warn.push(`地図 ${Math.round(st.map.age)} 秒前`);
+    if (!st.pose) warn.push('現在地なし');
+    else if (st.pose.age > 2) warn.push('現在地が古い');
+    conn.textContent = warn.length ? warn.join(' / ') : '受信中';
+    conn.className = 'pill ' + (warn.length ? 'warn' : 'ok');
+    const nav = $('nav');
+    nav.textContent = st.nav2 ? 'Nav2 OK' : 'Nav2 未接続';
+    nav.className = 'pill ' + (st.nav2 ? 'ok' : 'bad');
+    const g = st.goal || { status: 'idle' };
+    $('goaltext').textContent = GOAL_TEXT[g.status] || g.status;
+    let d = '';
+    if (g.status === 'active' && g.distance !== undefined) d = `残り ${g.distance.toFixed(1)} m` + (g.eta ? ` / 約 ${g.eta} 秒` : '');
+    if (g.message) d = g.message;
+    $('detail').textContent = d;
+    const hint = !st.map ? '地図を待っています (robot_map は起動している?)'
+      : cand ? '印からドラッグすると到着時の向きを指定できます' : '';
+    $('hinttext').textContent = hint;
+    $('hint').hidden = !hint;
+  }
+
+  async function loadMap(version) {
+    loadingVersion = version;
+    try {
+      const r = await fetch(api('/api/map.png?v=' + version), { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      const h = (k) => parseFloat(r.headers.get('X-Map-' + k));
+      const meta = { version: h('Version'), width: h('Width'), height: h('Height'), resolution: h('Resolution'),
+        origin_x: h('Origin-X'), origin_y: h('Origin-Y') };
+      const known = (r.headers.get('X-Map-Known') || '').split(',').map(parseFloat);
+      meta.known = known.length === 4 && known.every(Number.isFinite) ? known : null;
+      const url = URL.createObjectURL(await r.blob());
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        map = { img, meta }; dirty = true;
+        if (!fitted) { fitted = true; if (!(follow && st && st.pose)) fitMap(); }
+      };
+      img.src = url;
+    } catch (e) {
+      loadingVersion = -1;
+    }
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch(api('/api/state'), { cache: 'no-store' });
+      if (r.status === 403) { $('conn').textContent = 'URL の key が違います'; $('conn').className = 'pill bad'; }
+      else if (!r.ok) throw new Error(r.status);
+      else {
+        st = await r.json();
+        if (st.map && st.map.version !== loadingVersion) loadMap(st.map.version);
+        if (follow && st.pose) { view.cx = st.pose.x; view.cy = st.pose.y; }
+        updateStatus(true); updateCand(); dirty = true;
+      }
+    } catch (e) {
+      updateStatus(false);
+    }
+    setTimeout(poll, 500);
+  }
+
+  function updateCand() {
+    $('send').disabled = !cand;
+    $('clear').hidden = !cand;
+    if (!cand) { $('candtext').textContent = '地図をタップして目的地を置く'; return; }
+    const yaw = cand.yaw === null ? '今の向き' : `${deg(cand.yaw)}°`;
+    $('candtext').textContent = `目的地 x ${cand.x.toFixed(2)}  y ${cand.y.toFixed(2)}  向き ${yaw}`;
+  }
+
+  // ---------- 操作 ----------
+  const pts = new Map();
+  let mode = 'none', start = null, pinch = null;
+
+  function setFollow(on) {
+    follow = on; $('follow').classList.toggle('on', on);
+    if (on && st && st.pose) { view.cx = st.pose.x; view.cy = st.pose.y; }
+    dirty = true;
+  }
+
+  cv.addEventListener('pointerdown', (e) => {
+    cv.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, [e.offsetX, e.offsetY]);
+    if (pts.size === 1) {
+      start = { x: e.offsetX, y: e.offsetY, cx: view.cx, cy: view.cy };
+      mode = 'tap';
+      if (cand) {
+        const [sx, sy] = toScreen(cand.x, cand.y);
+        if (Math.hypot(sx - e.offsetX, sy - e.offsetY) < 40) mode = 'yaw';
+      }
+    } else if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, s: view.s, world: toWorld(...mid) };
+      mode = 'pinch';
+    }
+  });
+
+  cv.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, [e.offsetX, e.offsetY]);
+    if (mode === 'tap' && Math.hypot(e.offsetX - start.x, e.offsetY - start.y) > 10) {
+      mode = 'pan'; setFollow(false);
+    }
+    if (mode === 'pan') {
+      view.cx = start.cx - (e.offsetX - start.x) / view.s;
+      view.cy = start.cy + (e.offsetY - start.y) / view.s;
+      dirty = true;
+    } else if (mode === 'yaw') {
+      const [sx, sy] = toScreen(cand.x, cand.y);
+      if (Math.hypot(e.offsetX - sx, e.offsetY - sy) > 15) {
+        cand.yaw = Math.atan2(sy - e.offsetY, e.offsetX - sx); updateCand(); dirty = true;
+      }
+    } else if (mode === 'pinch' && pts.size >= 2) {
+      const [a, b] = [...pts.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      view.s = Math.max(2, Math.min(400, pinch.s * d / pinch.d));
+      if (!follow) {
+        const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        view.cx = pinch.world[0] - (mid[0] - W() / 2) / view.s;
+        view.cy = pinch.world[1] + (mid[1] - H() / 2) / view.s;
+      }
+      dirty = true;
+    }
+  });
+
+  function up(e) {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    if (mode === 'tap' && pts.size === 0) {
+      const [x, y] = toWorld(e.offsetX, e.offsetY);
+      cand = { x, y, yaw: null }; updateCand(); dirty = true;
+      if (st) updateStatus(true);
+    }
+    if (pts.size === 0) mode = 'none';
+    else if (mode === 'pinch') mode = 'none';   // 指が 1 本残っても, タップや移動にしない
+  }
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', (e) => { pts.delete(e.pointerId); if (!pts.size) mode = 'none'; });
+
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const before = toWorld(e.offsetX, e.offsetY);
+    view.s = Math.max(2, Math.min(400, view.s * Math.exp(-e.deltaY * 0.0015)));
+    if (!follow) {
+      view.cx = before[0] - (e.offsetX - W() / 2) / view.s;
+      view.cy = before[1] + (e.offsetY - H() / 2) / view.s;
+    }
+    dirty = true;
+  }, { passive: false });
+
+  $('follow').addEventListener('click', () => setFollow(!follow));
+  $('fit').addEventListener('click', () => { setFollow(false); fitMap(); });
+  $('clear').addEventListener('click', () => { cand = null; updateCand(); dirty = true; if (st) updateStatus(true); });
+
+  async function post(path, body) {
+    try {
+      const r = await fetch(api(path), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}) });
+      const j = await r.json().catch(() => ({ ok: false, message: `HTTP ${r.status}` }));
+      return r.status === 403 ? { ok: false, message: 'URL の key が違います' } : j;
+    } catch (e) {
+      return { ok: false, message: '接続できません' };
+    }
+  }
+
+  $('send').addEventListener('click', async () => {
+    if (!cand) return;
+    $('send').disabled = true;
+    const r = await post('/api/goal', cand);
+    toast(r.message || (r.ok ? '送信した' : '送信できない'));
+    if (r.ok) cand = null;
+    updateCand(); dirty = true;
+  });
+
+  $('cancel').addEventListener('click', async () => {
+    const r = await post('/api/cancel');
+    toast(r.message || '');
+  });
+
+  resize();
+  requestAnimationFrame(loop);
+  poll();
+})();
+</script>
+</body>
+</html>

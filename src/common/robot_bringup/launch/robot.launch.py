@@ -4,13 +4,16 @@
   ros2 launch robot_bringup robot.launch.py lidar:=l1 lidar_port:=/dev/serial/by-id/...
   ros2 launch robot_bringup robot.launch.py nav:=false operation:=false   # 地図作り・確認だけ
   ros2 launch robot_bringup robot.launch.py dry_run:=true   # Arduino に送らずログに出すだけ
+  ros2 launch robot_bringup robot.launch.py web_token:=abcd # スマホは http://<IP>:8080/?key=abcd
 
 起動するもの (それぞれ false にすると起動しない)
   driver    : unitree_lidar_ros2 (L1 はノードを直接, L2 はドライバの launch.py を起動)
   point_lio : lidar_bridge の real.launch.py (ブリッジ, 静的 TF, Point-LIO)
   nav       : robot_navigation の navigation.launch.py (実機用の引数で, nav_delay 秒後に起動)
   operation : robot_operation の operation.launch.py (/cmd_vel -> Arduino)
-目的地は別のターミナルから `ros2 run robot_goal goal X Y [YAW_DEG]` で送る.
+  map       : robot_map の map.launch.py (Point-LIO の点群 -> 2D 地図 /map)
+  web       : robot_goal の web (スマホから地図をタップして目的地を送る. ポート web_port)
+目的地はスマホの http://<IP>:8080 か, 別のターミナルから `ros2 run robot_goal goal X Y [YAW_DEG]` で送る.
 """
 import os
 
@@ -22,6 +25,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _launch(pkg, name):
@@ -105,6 +109,27 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('operation')),
     )
 
+    robot_map = IncludeLaunchDescription(
+        _launch('robot_map', 'map.launch.py'),
+        launch_arguments={
+            'pcd_file': LaunchConfiguration('map_pcd'),
+            'resolution': LaunchConfiguration('map_resolution'),
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('map')),
+    )
+
+    web = Node(
+        package='robot_goal',
+        executable='web',
+        name='robot_goal_web',
+        output='screen',
+        parameters=[{
+            'port': ParameterValue(LaunchConfiguration('web_port'), value_type=int),
+            'token': ParameterValue(LaunchConfiguration('web_token'), value_type=str),
+        }],
+        condition=IfCondition(LaunchConfiguration('web')),
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('lidar', default_value=os.environ.get('ROS2_TARGET', 'l2'),
                               choices=['l1', 'l2'], description='LiDAR の機種'),
@@ -114,6 +139,10 @@ def generate_launch_description():
         DeclareLaunchArgument('nav', default_value='true', description='Nav2 を起動するか'),
         DeclareLaunchArgument('operation', default_value='true',
                               description='/cmd_vel -> Arduino 変換を起動するか'),
+        DeclareLaunchArgument('map', default_value='true',
+                              description='2D 地図 (/map) を作るか'),
+        DeclareLaunchArgument('web', default_value='true',
+                              description='スマホから目的地を送る Web サーバーを起動するか'),
         DeclareLaunchArgument('rviz', default_value='false',
                               description='RViz を起動するか (ラズパイでは PC 側で開く)'),
         DeclareLaunchArgument('lidar_port', default_value='/dev/ttyUSB0',
@@ -132,8 +161,17 @@ def generate_launch_description():
                               description='true なら Arduino に送らずログに出すだけ'),
         DeclareLaunchArgument('calibration_file', default_value='',
                               description='calibrate_drive の summary.yaml (空なら operation.yaml の値)'),
+        DeclareLaunchArgument('map_pcd', default_value='',
+                              description='2D 地図の作成を始める前に読み込む保存済み地図 (.pcd)'),
+        DeclareLaunchArgument('map_resolution', default_value='0.05',
+                              description='2D 地図の 1 セル [m]'),
+        DeclareLaunchArgument('web_port', default_value='8080', description='Web サーバーのポート'),
+        DeclareLaunchArgument('web_token', default_value='',
+                              description='設定すると URL に ?key=<token> が無いと操作できない'),
         OpaqueFunction(function=_driver),
         point_lio,
         nav,
         operation,
+        robot_map,
+        web,
     ])
