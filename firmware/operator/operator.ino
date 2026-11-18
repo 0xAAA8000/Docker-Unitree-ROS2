@@ -109,7 +109,11 @@ void setup() {
 
   pinMode(DRIVE_M1_PIN, OUTPUT);
   pinMode(DRIVE_M2_PIN, OUTPUT);
-  Serial.println("[ READY ] Operator start.");
+  // 書き込んだ版を確かめられるよう, モーターのピン番号も出す (arduino.py は "[ READY ]" で始まるかだけを見る)
+  Serial.print("[ READY ] Operator start. motor pins M1=");
+  Serial.print(DRIVE_M1_PIN);
+  Serial.print(" M2=");
+  Serial.println(DRIVE_M2_PIN);
 }
 
 void loop() {

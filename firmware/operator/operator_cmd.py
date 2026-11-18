@@ -30,8 +30,13 @@ def main():
     with serial.Serial(PORT, BAUD, timeout=1) as ser:
         deadline = time.time() + 5
         while time.time() < deadline:
-            if ser.readline().startswith(b"[ READY ]"):
+            line = ser.readline()
+            if line.startswith(b"[ READY ]"):
+                # 書き込んだファームウェアの版 (モーターのピン番号) を確かめられるよう表示する
+                print(line.decode(errors='replace').strip())
                 break
+        else:
+            print('[WARN] Arduino の READY を受信できなかった (古いファームウェアか, 別のプロセスがポートを使っている)')
 
         while True:
             send(ser, input("stg thr: ").strip())
