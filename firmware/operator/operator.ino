@@ -13,8 +13,10 @@ const int LIMIT_MIN_US = PULSE_MIN_US + (long)(PULSE_MAX_US - PULSE_MIN_US) * AN
 const int LIMIT_MAX_US = PULSE_MIN_US + (long)(PULSE_MAX_US - PULSE_MIN_US) * ANGLE_MAX / 180;
 
 // === Throttle Settings ===
-const uint8_t DRIVE_M1_PIN = 10;
-const uint8_t DRIVE_M2_PIN = 11;
+// PWM ピン. Uno では Servo ライブラリがタイマー 1 を使うので, ピン 9, 10 の analogWrite は効かない
+// (以前は M1 = 10 で, 後退がスロットル -100 以外で動かなかった). 5, 6 はタイマー 0 (約 980 Hz)
+const uint8_t DRIVE_M1_PIN = 5;   // 後退側 (旧 10)
+const uint8_t DRIVE_M2_PIN = 6;   // 前進側 (旧 11)
 
 const int THROTTLE_LIMIT_MIN = -100;
 const int THROTTLE_LIMIT_MAX = 100;
@@ -67,7 +69,7 @@ void accel(int v){
     }
 }
 
-int controller(String cmd){
+void controller(String cmd){
     cmd.trim();
     if (cmd.length() == 0) return;
 
