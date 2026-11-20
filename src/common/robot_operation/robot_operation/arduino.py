@@ -35,11 +35,18 @@ class Arduino:
         with self._lock:
             self.ser.write(f'{servo} {throttle}\n'.encode())
             self.last = (servo, throttle)
-            # 応答を読み捨てる (ERR だけ表示)
+            # 応答を読み捨てる. 正常な応答 ([ INFO ] ...) 以外は表示する:
+            #   [ ERR ] ...  : コマンドの誤り (直後の行は Arduino が受け取ったコマンドの中身)
+            #   [ READY ] ... : 起動後にもう一度届いたら Arduino がリセットされた
+            #                   (別のプロセスがポートを開いた, 電源の電圧低下など)
             while self.ser.in_waiting:
                 line = self.ser.readline().decode(errors='replace').strip()
-                if 'ERR' in line:
-                    self.log(f'[ARDUINO] {line}')
+                if not line or line.startswith('[ INFO ]'):
+                    continue
+                if line.startswith('[ READY ]'):
+                    self.log(f'[ARDUINO] リセットされた: {line}')
+                else:
+                    self.log(f'[ARDUINO] {line!r}')
 
     def stop(self):
         self.send(self.center, 0)
