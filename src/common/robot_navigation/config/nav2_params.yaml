@@ -50,7 +50,7 @@ local_costmap:
       height: 5
       resolution: 0.1
       track_unknown_space: false    # 未知の領域を「空き」として扱う（探索しながらの走行向け）
-      footprint: "[[0.6, 0.4], [0.6, -0.4], [-0.6, -0.4], [-0.6, 0.4]]"
+      footprint: "[[0.2, 0.1], [0.2, -0.4], [-0.2, -0.4], [-0.2, 0.1]]"
       plugins: ["obstacle_layer", "inflation_layer"]
 
       obstacle_layer:
@@ -90,7 +90,7 @@ global_costmap:
       use_sim_time: true
       resolution: 0.1
       track_unknown_space: false    # 未知の領域を「空き」として扱う（探索しながらの走行向け）
-      footprint: "[[0.6, 0.4], [0.6, -0.4], [-0.6, -0.4], [-0.6, 0.4]]"
+      footprint: "[[0.2, 0.1], [0.2, -0.4], [-0.2, -0.4], [-0.2, 0.1]]"
       footprint_padding: 0.15   # 既定 0.01。経路計画時だけ車体を一回り大きく見て、追従誤差・内輪差の分だけ障害物から離す
       rolling_window: true      # ← 追加（車両中心に追従）
       width: 100                # ← 追加（農園サイズに合わせて）
@@ -121,8 +121,8 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.5  # 3.0->1.5: コストをゆっくり下げ、障害物から離れた経路ほど得になるようにする
-        inflation_radius: 1.5     # 0.8->1.5: 幹から約 1.5 m までコストを付け、大回りの経路を選ばせる
+        cost_scaling_factor: 0.5  # 3.0->1.5: コストをゆっくり下げ、障害物から離れた経路ほど得になるようにする
+        inflation_radius: 0.5     # 0.8->1.5: 幹から約 1.5 m までコストを付け、大回りの経路を選ばせる
 
 bt_navigator: # BT: 行動ツリー
   ros__parameters:
@@ -139,7 +139,7 @@ planner_server:
     GridBased:
       plugin: "nav2_smac_planner/SmacPlannerHybrid"
       motion_model_for_search: "REEDS_SHEPP"    # 前進のみ # 2026/10/05: "DUBIN"->"REEDS_SHEPP": RPPで後進を許可してるので、それに合わせる
-      minimum_turning_radius: 3.0         # wheelbase 1.0 / tan(steering_limit 0.5) ~= 1.8
+      minimum_turning_radius: 2.0         # wheelbase 1.0 / tan(steering_limit 0.5) ~= 1.8
       allow_unknown: true
       max_planning_time: 15.0       # 既定 5.0
       downsample_costmap: false     # true にしない（Humble + rolling_window では原点がずれる）
