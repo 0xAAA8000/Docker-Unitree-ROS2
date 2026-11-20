@@ -13,10 +13,13 @@ const int LIMIT_MIN_US = PULSE_MIN_US + (long)(PULSE_MAX_US - PULSE_MIN_US) * AN
 const int LIMIT_MAX_US = PULSE_MIN_US + (long)(PULSE_MAX_US - PULSE_MIN_US) * ANGLE_MAX / 180;
 
 // === Throttle Settings ===
-// PWM ピン. Uno では Servo ライブラリがタイマー 1 を使うので, ピン 9, 10 の analogWrite は効かない
-// (以前は M1 = 10 で, 後退がスロットル -100 以外で動かなかった). 5, 6 はタイマー 0 (約 980 Hz)
-const uint8_t DRIVE_M1_PIN = 5;   // 後退側 (旧 10)
-const uint8_t DRIVE_M2_PIN = 6;   // 前進側 (旧 11)
+const uint8_t CTRL_FULL_PIN = 11;
+const uint8_t CTRL_INA_PIN = 10;
+const uint8_t CTRL_INB_PIN = 9;
+const uint8_t CTRL_BRK_PIN = 8;
+const uint8_t CTRL_PWM_PIN = 7;
+const uint8_t CTRL_PSB_PIN = 6;
+const uint8_t CTRL_MODE_PIN = 5;
 
 const int THROTTLE_LIMIT_MIN = -100;
 const int THROTTLE_LIMIT_MAX = 100;
@@ -41,18 +44,19 @@ void handle(int v) {
 }
 
 void forward(int v){
-    digitalWrite(DRIVE_M1_PIN, 0);
-    analogWrite(DRIVE_M2_PIN, v);
+    digitalWrite(CTRL_INA_PIN, 0);
+    analogWrite(CTRL_INB_PIN, v);
 }
 
 void backward(int v){
-    analogWrite(DRIVE_M1_PIN, v);
-    digitalWrite(DRIVE_M2_PIN, 0);
+    analogWrite(CTRL_INA_PIN, v);
+    digitalWrite(CTRL_INB_PIN, 0);
 }
 
 void stop(int v){ // feature
-    digitalWrite(DRIVE_M1_PIN, 0);
-    digitalWrite(DRIVE_M2_PIN, 0);
+    digitalWrite(CTRL_BRK_PIN, HIGH);
+    //digitalWrite(DRIVE_M1_PIN, 0);
+    //digitalWrite(DRIVE_M2_PIN, 0);
 }
 
 void accel(int v){
@@ -69,7 +73,7 @@ void accel(int v){
     }
 }
 
-void controller(String cmd){
+int controller(String cmd){
     cmd.trim();
     if (cmd.length() == 0) return;
 
@@ -78,6 +82,7 @@ void controller(String cmd){
     for (unsigned int i = 0; i < cmd.length(); i++){
         if (!isDigit(cmd[i]) and (cmd[i] != ' ') and (cmd[i] != '-')){ // '-' は後退
             Serial.println("[ ERR ][ CONTROLLER ] Command must integer.");
+            Serial.println(cmd);
             return;
         }
     }
@@ -107,13 +112,24 @@ void setup() {
   servo.attach(SERVO_PIN, PULSE_MIN_US, PULSE_MAX_US);
   servo.writeMicroseconds(map(INIT_ANGLE, 0, 180, PULSE_MIN_US, PULSE_MAX_US));
 
-  pinMode(DRIVE_M1_PIN, OUTPUT);
-  pinMode(DRIVE_M2_PIN, OUTPUT);
-  // 書き込んだ版を確かめられるよう, モーターのピン番号も出す (arduino.py は "[ READY ]" で始まるかだけを見る)
-  Serial.print("[ READY ] Operator start. motor pins M1=");
-  Serial.print(DRIVE_M1_PIN);
-  Serial.print(" M2=");
-  Serial.println(DRIVE_M2_PIN);
+  pinMode(CTRL_FULL_PIN, OUTPUT);
+  pinMode(CTRL_INA_PIN, OUTPUT);
+  pinMode(CTRL_INB_PIN, OUTPUT);
+  pinMode(CTRL_BRK_PIN, OUTPUT);
+  pinMode(CTRL_PWM_PIN, OUTPUT);
+  pinMode(CTRL_PSB_PIN, OUTPUT);
+  pinMode(CTRL_MODE_PIN, OUTPUT);
+
+  digitalWrite(CTRL_FULL_PIN, LOW);
+  digitalWrite(CTRL_INA_PIN, LOW);
+  digitalWrite(CTRL_INB_PIN, LOW);
+  digitalWrite(CTRL_BRK_PIN, LOW);
+  digitalWrite(CTRL_PWM_PIN, LOW);
+  digitalWrite(CTRL_PWM_PIN, HIGH);
+  digitalWrite(CTRL_PSB_PIN, HIGH);
+  digitalWrite(CTRL_MODE_PIN, LOW);
+  
+  Serial.println("[ READY ] Operator start.");
 }
 
 void loop() {
