@@ -111,10 +111,6 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
   `navigation.launch.py` は既定で実機用 (`use_sim_time:=false`、`publish_base_tf:=false`、
   `cmd_vel_topic:=/cmd_vel`、`nav2_params_real.yaml`) で起動し、`sim:=true` でこれらがまとめて sim 用になります。
   個別に指定した引数は `sim` より優先されます。
-* 実機の障害物は STVL (`spatio_temporal_voxel_layer`) で持ち、**最後に見えてから 5 秒で消えます**
-  (`voxel_decay`)。壁など見え続けている物は残り、歩行者や落ち葉など動いている物はその場でしか障害物になりません。
-  視野から外れた壁も 5 秒で消えるので、見えていない所を通る経路が作られることがあります
-  (近づけば見えて障害物になり、経路が作り直されます)。
 * LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
   `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。

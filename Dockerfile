@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-xacro ros-humble-robot-state-publisher \
     ros-humble-teleop-twist-keyboard \
     ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-slam-toolbox \
-    ros-humble-spatio-temporal-voxel-layer \
     libpcl-dev libeigen3-dev libomp-dev python3-dev python3-serial \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /ros2_ws
