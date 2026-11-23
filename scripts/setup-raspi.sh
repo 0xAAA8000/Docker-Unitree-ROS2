@@ -62,7 +62,7 @@ pkgs=(
     ros-humble-pcl-conversions ros-humble-pcl-ros
     ros-humble-tf2-ros ros-humble-tf2-eigen ros-humble-tf2-sensor-msgs ros-humble-tf2-geometry-msgs
     ros-humble-xacro ros-humble-robot-state-publisher
-    ros-humble-navigation2 ros-humble-nav2-bringup
+    ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-spatio-temporal-voxel-layer
     ros-humble-sensor-msgs-py
     python3-colcon-common-extensions python3-rosdep
     libpcl-dev libeigen3-dev libomp-dev python3-dev

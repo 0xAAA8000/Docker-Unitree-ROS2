@@ -20,30 +20,45 @@ def generate_launch_description():
     publish_base_tf = LaunchConfiguration('publish_base_tf')
     cmd_vel_topic = LaunchConfiguration('cmd_vel_topic')
 
+    # 既定は実機. sim:=true にすると, 下の 4 つの既定値がまとめて sim (Gazebo) 用になる.
+    # 個別に指定した引数は, sim の値より優先される.
+    sim = LaunchConfiguration('sim')
+    declare_sim_cmd = DeclareLaunchArgument(
+        'sim',
+        default_value='false',
+        description='true なら Gazebo シミュレーション用の既定値で起動する'
+    )
+
+    def _pick(sim_value, real_value):
+        """sim:=true なら sim_value, それ以外は real_value を返す substitution."""
+        return PythonExpression(
+            ["'", sim_value, "' if '", sim, "'.lower() == 'true' else '", real_value, "'"])
+
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='true',
-        description='Gazeboシミュレーション時間を使用するかどうか'
+        default_value=sim,
+        description='シミュレーション時間を使うか (既定: sim と同じ)'
     )
 
     # 実機では lidar_bridge の real.launch.py が LiDAR の傾きを含めて出すので false にする
     declare_publish_base_tf_cmd = DeclareLaunchArgument(
         'publish_base_tf',
-        default_value='true',
-        description='aft_mapped -> base_link の静的 TF (sim 用の値) を出すか'
+        default_value=sim,
+        description='aft_mapped -> base_link の静的 TF (sim 用の値) を出すか (既定: sim と同じ)'
     )
 
     # sim: ackermann_steering_controller へ / 実機: /cmd_vel (robot_operation の cmd_vel_converter)
     declare_cmd_vel_topic_cmd = DeclareLaunchArgument(
         'cmd_vel_topic',
-        default_value='/ackermann_steering_controller/reference_unstamped',
+        default_value=_pick('/ackermann_steering_controller/reference_unstamped', '/cmd_vel'),
         description='Nav2 の /cmd_vel のリマップ先'
     )
 
-    # デフォルトのパラメータファイルパス（実行ディレクトリ配下の nav2_params.yaml）
+    # 実機: nav2_params_real.yaml (車体 0.50 x 0.30 m) / sim: nav2_params.yaml
     declare_params_file_cmd = DeclareLaunchArgument(
         'params_file',
-        default_value=os.path.join(pkg_robot_navigation, 'config', 'nav2_params.yaml'),
+        default_value=_pick(os.path.join(pkg_robot_navigation, 'config', 'nav2_params.yaml'),
+                            os.path.join(pkg_robot_navigation, 'config', 'nav2_params_real.yaml')),
         description='Nav2パラメータファイル(YAML)のフルパス'
     )
 
@@ -111,6 +126,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        declare_sim_cmd,
         declare_use_sim_time_cmd,
         declare_params_file_cmd,
         declare_autostart_cmd,

@@ -100,15 +100,21 @@ unitree_lidar_ros2 ──/unilidar/cloud, /unilidar/imu──▶ lidar_bridge �
 ros2 launch unitree_lidar_ros2 launch.py
 # 2. ブリッジ + 静的 TF + Point-LIO (L1 なら lidar:=l1)
 ros2 launch lidar_bridge real.launch.py lidar:=l2
-# 3. Nav2 (aft_mapped -> base_link は 2 が出すので publish_base_tf:=false)
-ros2 launch robot_navigation navigation.launch.py use_sim_time:=false publish_base_tf:=false cmd_vel_topic:=/cmd_vel \
-    params_file:=$(ros2 pkg prefix robot_navigation)/share/robot_navigation/config/nav2_params_real.yaml
+# 3. Nav2 (既定が実機用. Gazebo で動かすときは sim:=true)
+ros2 launch robot_navigation navigation.launch.py
 # 4. Twist -> Arduino (最初は dry_run:=true で指令値だけ確認するとよい)
 ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
 ```
 
 * Nav2 のパラメータは実機用が `src/common/robot_navigation/config/nav2_params_real.yaml`
   (前後 0.50 m x 横幅 0.30 m の車体、幅 0.80 m のドアを通れる設定)、sim 用が `nav2_params.yaml` です。
+  `navigation.launch.py` は既定で実機用 (`use_sim_time:=false`、`publish_base_tf:=false`、
+  `cmd_vel_topic:=/cmd_vel`、`nav2_params_real.yaml`) で起動し、`sim:=true` でこれらがまとめて sim 用になります。
+  個別に指定した引数は `sim` より優先されます。
+* 実機の障害物は STVL (`spatio_temporal_voxel_layer`) で持ち、**最後に見えてから 5 秒で消えます**
+  (`voxel_decay`)。壁など見え続けている物は残り、歩行者や落ち葉など動いている物はその場でしか障害物になりません。
+  視野から外れた壁も 5 秒で消えるので、見えていない所を通る経路が作られることがあります
+  (近づけば見えて障害物になり、経路が作り直されます)。
 * LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
   `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。
