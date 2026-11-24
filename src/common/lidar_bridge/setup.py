@@ -34,6 +34,7 @@ setup(
             'sensor_check = lidar_bridge.sensor_check:main',
             'watch_gaps = lidar_bridge.watch_gaps:main',
             'ground_check = lidar_bridge.ground_check:main',
+            'stationary_detector = lidar_bridge.stationary_detector:main',
         ],
     },
 )

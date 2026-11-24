@@ -6,6 +6,7 @@
                        base_link -> lidar_link, base_link -> imu_link
   * Point-LIO        : /lidar, /imu を購読 (point_lio:=false で起動しない)
   * RViz             : Point-LIO の結果を表示 (rviz:=false で起動しない)
+  * stationary_detector: /cmd_vel と /imu から停止を判定し, Point-LIO の ZUPT に渡す (zupt:=false で無効)
 
 LiDAR ドライバ (unitree_lidar_ros2) は別に起動しておくこと.
 Nav2 は robot_navigation の navigation.launch.py を
@@ -93,6 +94,19 @@ def _setup(context):
         _static_tf('base_link_to_imu', 'base_link', imu_frame, t, rpy),
     ]
 
+    zupt = LaunchConfiguration('zupt').perform(context).lower() == 'true'
+    if zupt:
+        actions.append(Node(
+            package='lidar_bridge',
+            executable='stationary_detector',
+            name='stationary_detector',
+            output='screen',
+            parameters=[{
+                'imu_topic': prm.get('imu_out', '/imu'),
+                'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic').perform(context),
+            }],
+        ))
+
     # Point-LIO: 機種ごとの yaml を使い, 入力トピックだけ /lidar, /imu に差し替える
     point_lio_params = [
         os.path.join(get_package_share_directory('point_lio'), 'config',
@@ -120,6 +134,9 @@ def _setup(context):
             'mapping.acc_cov_output': float(LaunchConfiguration('acc_cov_output').perform(context)),
             'mapping.imu_meas_omg_cov': float(LaunchConfiguration('imu_omg_cov').perform(context)),
             'mapping.gyr_cov_output': float(LaunchConfiguration('gyr_cov_output').perform(context)),
+            # 止まっている間は速度 = 0 を観測として入れる (stationary_detector の /stationary を使う)
+            'zupt.enable': zupt,
+            'zupt.topic': '/stationary',
         },
     ]
     actions.append(Node(
@@ -162,6 +179,10 @@ def generate_launch_description():
                               description='Point-LIO の IMU 角速度の観測分散 (大きいほど IMU を信用しない)'),
         DeclareLaunchArgument('gyr_cov_output', default_value='1000.0',
                               description='Point-LIO の角速度のプロセスノイズ (小さいほど角速度の推定が滑らか)'),
+        DeclareLaunchArgument('zupt', default_value='true',
+                              description='止まっている間は Point-LIO に速度 0 を入れる (手で持って動かす試験では false)'),
+        DeclareLaunchArgument('cmd_vel_topic', default_value='/cmd_vel',
+                              description='停止判定に使う速度指令のトピック'),
         DeclareLaunchArgument('init_map_size', default_value='1000',
                               description='Point-LIO が最初の地図を作るのに使う点の数の下限'),
         OpaqueFunction(function=_setup),

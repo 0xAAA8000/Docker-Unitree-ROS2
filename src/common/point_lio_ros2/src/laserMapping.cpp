@@ -21,6 +21,8 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <chrono>
 // #include <livox_ros_driver2/msg/custom_msg.hpp>
 
 #include "parameters.h"
@@ -334,6 +336,38 @@ void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 //     mtx_buffer.unlock();
 //     sig_buffer.notify_all();
 // }
+
+/*** ZUPT (zero velocity update) ***/
+// 停止判定のノード (lidar_bridge の stationary_detector) が出す /stationary を受け取り,
+// 止まっている間は kf_output に「速度 = 0」の観測を入れる. 速度が 0 に保たれるので,
+// IMU の加速度のずれ (バイアス, 振動) を積分して位置が流れるのを防ぐ.
+bool zupt_flag = false;
+bool zupt_was_active = false;
+std::chrono::steady_clock::time_point zupt_stamp;
+
+void zupt_cbk(const std_msgs::msg::Bool::SharedPtr msg) {
+    zupt_flag = msg->data;
+    zupt_stamp = std::chrono::steady_clock::now();
+}
+
+bool zupt_active() {
+    if (!zupt_en || !zupt_flag) return false;
+    double age = std::chrono::duration<double>(std::chrono::steady_clock::now() - zupt_stamp).count();
+    return age < zupt_timeout;
+}
+
+// 速度 (状態の 12..14 番目) に z = 0 の観測を入れる通常のカルマン更新
+void zupt_update_output() {
+    const int V = 12;
+    Eigen::Matrix<double, 30, 30> P = kf_output.get_P();
+    Eigen::Matrix3d S = P.block<3, 3>(V, V) + Eigen::Matrix3d::Identity() * zupt_vel_cov;
+    Eigen::Matrix<double, 30, 3> K = P.block<30, 3>(0, V) * S.inverse();
+    Eigen::Vector3d residual = -kf_output.x_.vel;
+    Eigen::Matrix<double, 30, 1> dx = K * residual;
+    kf_output.x_.boxplus(dx);
+    P -= K * P.block<3, 30>(V, 0);
+    kf_output.change_P(P);
+}
 
 void imu_cbk(const sensor_msgs::msg::Imu::SharedPtr msg_in) {
     publish_count++;
@@ -781,6 +815,17 @@ int main(int argc, char **argv) {
     sub_pcl = nh->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
     // }
     auto sub_imu = nh->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 200000, imu_cbk);
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_zupt;
+    if (zupt_en) {
+        if (use_imu_as_input) {
+            RCLCPP_WARN(logger, "zupt.enable は use_imu_as_input: false のときだけ有効. ZUPT を使わない");
+            zupt_en = false;
+        } else {
+            sub_zupt = nh->create_subscription<std_msgs::msg::Bool>(zupt_topic, 10, zupt_cbk);
+            RCLCPP_INFO(logger, "ZUPT: %s が true の間, 速度 = 0 を観測として入れる (分散 %g)",
+                        zupt_topic.c_str(), zupt_vel_cov);
+        }
+    }
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes_body;
@@ -1017,6 +1062,15 @@ int main(int argc, char **argv) {
                                     propag_time += omp_get_wtime() - propag_imu_start;
                                     double solve_imu_start = omp_get_wtime();
                                     kf_output.update_iterated_dyn_share_IMU();
+                                    bool zupt_now = zupt_active();
+                                    if (zupt_now) {
+                                        zupt_update_output();
+                                    }
+                                    if (zupt_now != zupt_was_active) {
+                                        RCLCPP_INFO(logger, zupt_now ? "ZUPT: 停止中 (速度 = 0 を観測として入れる)"
+                                                                     : "ZUPT: 走行中");
+                                        zupt_was_active = zupt_now;
+                                    }
                                     solve_time += omp_get_wtime() - solve_imu_start;
                                 }
                             }

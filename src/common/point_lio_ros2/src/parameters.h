@@ -34,6 +34,10 @@ extern double laser_point_cov, acc_norm;
 extern double acc_cov_input, gyr_cov_input, vel_cov;
 extern double gyr_cov_output, acc_cov_output, b_gyr_cov, b_acc_cov;
 extern double imu_meas_acc_cov, imu_meas_omg_cov;
+// ZUPT (zero velocity update): 止まっている間は「速度 = 0」を観測として入れ, IMU のずれで位置が流れるのを防ぐ
+extern bool zupt_en;
+extern std::string zupt_topic;
+extern double zupt_vel_cov, zupt_timeout;
 extern int lidar_type, pcd_save_interval;
 extern std::vector<double> gravity_init, gravity;
 extern std::vector<double> extrinT;

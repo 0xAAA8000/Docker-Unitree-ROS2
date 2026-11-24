@@ -13,6 +13,9 @@ bool prop_at_freq_of_imu, check_satu, con_frame, cut_frame;
 bool use_imu_as_input, space_down_sample, publish_odometry_without_downsample;
 int init_map_size, con_frame_num;
 double match_s, satu_acc, satu_gyro, cut_frame_time_interval;
+bool zupt_en;
+std::string zupt_topic;
+double zupt_vel_cov, zupt_timeout;
 float plane_thr;
 double filter_size_surf_min, filter_size_map_min, fov_deg;
 double cube_len;
@@ -45,6 +48,12 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->declare_parameter<int>("init_map_size", 100);
     nh->declare_parameter<bool>("space_down_sample", true);
     nh->declare_parameter<double>("mapping.satu_acc", 3.0);
+    // ZUPT: zupt.topic (std_msgs/Bool) が true の間, 速度 = 0 を観測として入れる.
+    // zupt.timeout [s] より古い値は無視する (停止判定のノードが止まったら効かなくなる)
+    nh->declare_parameter<bool>("zupt.enable", false);
+    nh->declare_parameter<std::string>("zupt.topic", "/stationary");
+    nh->declare_parameter<double>("zupt.vel_cov", 1e-4);     // 速度 0 の観測の分散 [(m/s)^2]
+    nh->declare_parameter<double>("zupt.timeout", 0.5);
     nh->declare_parameter<double>("mapping.satu_gyro", 35.0);
     nh->declare_parameter<double>("mapping.acc_norm", 1.0);
     nh->declare_parameter<float>("mapping.plane_thr", 0.05f);
@@ -105,6 +114,10 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->get_parameter("init_map_size", init_map_size);
     nh->get_parameter("space_down_sample", space_down_sample);
     nh->get_parameter("mapping.satu_acc", satu_acc);
+    nh->get_parameter("zupt.enable", zupt_en);
+    nh->get_parameter("zupt.topic", zupt_topic);
+    nh->get_parameter("zupt.vel_cov", zupt_vel_cov);
+    nh->get_parameter("zupt.timeout", zupt_timeout);
     nh->get_parameter("mapping.satu_gyro", satu_gyro);
     nh->get_parameter("mapping.acc_norm", acc_norm);
     nh->get_parameter("mapping.plane_thr", plane_thr);

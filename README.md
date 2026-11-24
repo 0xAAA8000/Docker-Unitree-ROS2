@@ -114,6 +114,11 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
 * LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
   `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。
+* 止まっている間は Point-LIO に「速度 = 0」を観測として入れ (ZUPT)、IMU の加速度のずれで位置が流れるのを防ぎます。
+  `stationary_detector` が、速度指令 (`/cmd_vel`) が 1 秒以上止まっていて、かつ IMU が静かなときに
+  `/stationary` を true にします (`real.launch.py` が起動)。**速度指令を出さずに動かすとき**
+  (手で持って動かす試験、`calibrate_drive` で Arduino を直接動かすときなど) は、
+  等速で動いていると止まっていると誤判定するので `zupt:=false` で起動してください。
 * 床が障害物として扱われる (Nav2 の経路が作れない) ときは、取付角度か `ground_z` が実機とずれています。
   平らな床に止めて LiDAR ドライバだけ起動し、`ros2 run lidar_bridge ground_check` を実行すると、
   床の点から `lidar_pitch_deg` / `lidar_roll_deg` / `ground_z` を推定して今の値と並べて表示します。
