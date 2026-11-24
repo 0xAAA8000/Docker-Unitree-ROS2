@@ -219,6 +219,33 @@ udev が systemd のサービス `robot-bringup.service` を起動する仕組�
 * 止めるときは `ros2 launch` にだけ SIGINT を送り、各ノードは launch が順に止めます (Ctrl-C と同じ)。
 * 起動に失敗したら 10 秒後にやり直します (LiDAR やネットワークの準備がまだのとき)。
 
+## スマホでモードを選んで起動する (`robot_launcher`)
+
+スマホで `http://<IP>:8080` を開くと、モード選択の画面が出ます。モードを選ぶと、進み具合の円と
+待っている段階 (前のモードの停止 → LiDAR の点群 → 自己位置 → Nav2 → モードの画面) が表示され、
+準備ができたらモードの画面 (`http://<IP>:8081`) へ自動で移ります。モードの画面の「モード」ボタンで戻れます。
+
+| モード | 起動するもの |
+| --- | --- |
+| 目的地設定の自走 | `robot.launch.py` 一式 (LiDAR、Point-LIO + ZUPT、地図、Nav2、Arduino 変換、目的地の画面) |
+| キャリブレーション | (準備中) |
+| マップ自動生成の自走 | (準備中。探索ノードが未実装) |
+
+* モードは同時に 1 つだけ動きます (Arduino のポートの取り合いを防ぐ)。問題の切り分けのため、
+  LiDAR ドライバや Point-LIO も含めて、モードを選ぶたびに起動し直します (切り替えに 10〜20 秒ほど)。
+  起動し直すので、地図と自己位置はモードごとに最初からになります。
+* モードごとの出力は `~/robot_logs/<日時>_<モード>.log` に保存されます。起動に失敗したときは、
+  止まった段階とログの最後の部分が画面に出ます。
+* モードを止めるたびに、Point-LIO が保存した地図 (`PCD/scans.pcd`) を `~/robot_maps/<日時>_<モード>.pcd` に移します
+  (次のモードで上書きされないように)。
+* 自動起動 (`scripts/start_ros.sh`、`scripts/autostart/robot-bringup.sh`) はこの `launcher` を起動します。
+  モードを順に止める時間が要るので、サービスの `TimeoutStopSec` は 60 秒程度にしてください。
+
+```bash
+ros2 run robot_launcher launcher                                   # 手で起動する場合
+ros2 run robot_launcher launcher --ros-args -p token:=abcd -p launch_args:="lidar_port:=/dev/serial/by-id/..."
+```
+
 ## スマホから地図をタップして目的地を送る (`robot_map` / `robot_goal web`)
 
 走りながら 2D 地図を作り、同じ Wi-Fi につないだスマホのブラウザでその地図をタップして目的地を送ります。
@@ -245,7 +272,7 @@ ros2 launch robot_bringup robot.launch.py map_pcd:=$HOME/maps/scans.pcd   # 保�
 ```bash
 ros2 launch robot_map map.launch.py                  # /cloud_registered -> /map
 ros2 run robot_goal web                              # /map を表示, ポート 8080
-ros2 run robot_goal web --ros-args -p port:=8081 -p token:=abcd
+ros2 run robot_goal web --ros-args -p port:=8082 -p token:=abcd
 ```
 
 * Web サーバーはノードを動かしているマシンで開きます。Point-LIO と同じマシン
@@ -268,11 +295,11 @@ ros2 run robot_goal web --ros-args -p port:=8081 -p token:=abcd
 上の帯に、地図・現在地の受信状況、Nav2 の接続、走行状態と残り距離が出ます。
 
 Nav2 の costmap を見るときは、表示する地図を差し替えた 2 つ目の Web サーバーを起動します
-(`http://<IP>:8081`)。黒が障害物、赤がロボットの中心が入るとぶつかる範囲、
+(`http://<IP>:8090`)。黒が障害物、赤がロボットの中心が入るとぶつかる範囲、
 オレンジが障害物から離れたい範囲 (濃いほど近い) です。
 
 ```bash
-ros2 run robot_goal web --ros-args -r __node:=costmap_web -p map_topic:=/global_costmap/costmap -p port:=8081
+ros2 run robot_goal web --ros-args -r __node:=costmap_web -p map_topic:=/global_costmap/costmap -p port:=8090
 ```
 
 ### 地図の作り方 (`robot_map`)

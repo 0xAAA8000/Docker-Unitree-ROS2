@@ -59,6 +59,10 @@ ARDUINO_PORT=$PORT
 # robot.launch.py に渡す引数 (空白区切り). 例:
 #   ROBOT_LAUNCH_ARGS="calibration_file:=$HOME/drive_calib/<日時>/summary.yaml web_token:=abcd"
 ROBOT_LAUNCH_ARGS=""
+# スマホの画面の key (空なら誰でも操作できる)
+ROBOT_WEB_TOKEN=""
+# 起動時に自動で始めるモード (goal / calibration. 空ならスマホで選ぶのを待つ)
+ROBOT_START_MODE=""
 CONFEOF
     echo "作成: $CONF"
 else
@@ -80,11 +84,11 @@ User=$USER
 SupplementaryGroups=dialout
 WorkingDirectory=$HOME
 ExecStart=$REPO/scripts/autostart/robot-bringup.sh
-# 止めるときは ros2 launch にだけ Ctrl-C (SIGINT) を送り, launch が各ノードを順に止める.
+# 止めるときは launcher にだけ Ctrl-C (SIGINT) を送り, launcher が動いているモードを順に止める.
 # 全プロセスに同時に送ると, 走行中のゴールの取り消しや地図の保存の途中で割り込まれる
 KillMode=mixed
 KillSignal=SIGINT
-TimeoutStopSec=30
+TimeoutStopSec=60
 # 起動直後に失敗したら (LiDAR やネットワークがまだ準備できていない等) 少し待ってやり直す
 Restart=on-failure
 RestartSec=10

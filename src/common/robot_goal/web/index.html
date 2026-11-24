@@ -69,6 +69,7 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
     <div id="side">
       <button id="follow" class="on" title="ロボットを画面の中心に保つ">追従</button>
       <button id="fit" title="地図全体を表示">全体</button>
+      <button id="modes" title="モード選択の画面へ" hidden>モード</button>
     </div>
     <div id="toast" hidden></div>
   </div>
@@ -244,6 +245,10 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
     }
   }
 
+  let launcherPort = 0;
+  const launcherUrl = () => `${location.protocol}//${location.hostname}:${launcherPort}/` +
+    (key ? '?key=' + encodeURIComponent(key) : '');
+
   async function poll() {
     try {
       const r = await fetch(api('/api/state'), { cache: 'no-store' });
@@ -251,12 +256,15 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
       else if (!r.ok) throw new Error(r.status);
       else {
         st = await r.json();
+        if (st.launcher_port) { launcherPort = st.launcher_port; $('modes').hidden = false; }
         if (st.map && st.map.version !== loadingVersion) loadMap(st.map.version);
         if (follow && st.pose) { view.cx = st.pose.x; view.cy = st.pose.y; }
         updateStatus(true); updateCand(); dirty = true;
       }
     } catch (e) {
       updateStatus(false);
+      // モードの切り替え中はこの画面のサーバーが止まっている
+      if (launcherPort) $('conn').textContent = '接続できません (モード切替中なら「モード」へ)';
     }
     setTimeout(poll, 500);
   }
@@ -351,6 +359,7 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
   }, { passive: false });
 
   $('follow').addEventListener('click', () => setFollow(!follow));
+  $('modes').addEventListener('click', () => { location.href = launcherUrl(); });
   $('fit').addEventListener('click', () => { setFollow(false); fitMap(); });
   $('clear').addEventListener('click', () => { cand = null; updateCand(); dirty = true; if (st) updateStatus(true); });
 

@@ -89,6 +89,7 @@ def generate_launch_description():
         launch_arguments={
             'lidar': LaunchConfiguration('lidar'),
             'rviz': LaunchConfiguration('rviz'),
+            'zupt': LaunchConfiguration('zupt'),
         }.items(),
         condition=IfCondition(LaunchConfiguration('point_lio')),
     )
@@ -135,6 +136,7 @@ def generate_launch_description():
         parameters=[{
             'port': ParameterValue(LaunchConfiguration('web_port'), value_type=int),
             'token': ParameterValue(LaunchConfiguration('web_token'), value_type=str),
+            'launcher_port': ParameterValue(LaunchConfiguration('launcher_port'), value_type=int),
         }],
         condition=IfCondition(LaunchConfiguration('web')),
     )
@@ -175,6 +177,10 @@ def generate_launch_description():
         DeclareLaunchArgument('map_resolution', default_value='0.05',
                               description='2D 地図の 1 セル [m]'),
         DeclareLaunchArgument('web_port', default_value='8080', description='Web サーバーのポート'),
+        DeclareLaunchArgument('launcher_port', default_value='0',
+                              description='モード選択の画面のポート (robot_launcher から起動したとき. 0 なら無し)'),
+        DeclareLaunchArgument('zupt', default_value='true',
+                              description='止まっている間は Point-LIO に速度 0 を入れる (手で動かす試験では false)'),
         DeclareLaunchArgument('web_token', default_value='',
                               description='設定すると URL に ?key=<token> が無いと操作できない'),
         OpaqueFunction(function=_driver),

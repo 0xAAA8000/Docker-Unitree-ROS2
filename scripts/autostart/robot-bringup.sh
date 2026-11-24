@@ -31,8 +31,15 @@ export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
 export PYTHONUNBUFFERED=1           # journalctl にログがすぐ出るように
 export RCUTILS_COLORIZED_OUTPUT=0   # journalctl に色のエスケープ文字が混ざらないように
 
-# ROBOT_LAUNCH_ARGS は空白区切りで launch 引数に渡す (例: "dry_run:=true web_token:=abcd")
-# shellcheck disable=SC2206
-args=(arduino_port:="$ARDUINO_PORT" ${ROBOT_LAUNCH_ARGS:-})
-echo "起動: ros2 launch robot_bringup robot.launch.py ${args[*]} (ROS2_TARGET=$ROS2_TARGET, ROS_DOMAIN_ID=$ROS_DOMAIN_ID, ユーザー $(id -un))"
-exec ros2 launch robot_bringup robot.launch.py "${args[@]}"
+# スマホで http://<IP>:8080 を開いてモードを選ぶ (robot_launcher). ROS 2 launch を挟まず直接起動する
+# (ros2 launch は停止の合図から数秒で強制終了し, モードを順に止める時間が足りないため).
+# ROBOT_LAUNCH_ARGS: 全モードの ros2 launch に足す引数 (空白区切り. 例 "dry_run:=true")
+# ROBOT_WEB_TOKEN:  設定すると http://<IP>:8080/?key=<token> でしか操作できない
+# ROBOT_START_MODE: 起動時に自動で始めるモード (goal / calibration. 空ならスマホで選ぶのを待つ)
+echo "起動: robot_launcher (ROS2_TARGET=$ROS2_TARGET, ROS_DOMAIN_ID=$ROS_DOMAIN_ID, ユーザー $(id -un))"
+# 空のパラメータ (-p token:=) は ROS 2 が解釈できず起動に失敗するので, 値があるものだけ渡す
+params=(-p "arduino_port:=$ARDUINO_PORT")
+[[ -n "${ROBOT_LAUNCH_ARGS:-}" ]] && params+=(-p "launch_args:=$ROBOT_LAUNCH_ARGS")
+[[ -n "${ROBOT_WEB_TOKEN:-}" ]] && params+=(-p "token:=$ROBOT_WEB_TOKEN")
+[[ -n "${ROBOT_START_MODE:-}" ]] && params+=(-p "start_mode:=$ROBOT_START_MODE")
+exec "$(ros2 pkg prefix robot_launcher)/lib/robot_launcher/launcher" --ros-args "${params[@]}"

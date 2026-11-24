@@ -48,6 +48,7 @@ class WebGoal(Node):
         self.host = p('host', '0.0.0.0').value
         self.port = p('port', 8080).value
         self.token = p('token', '').value
+        self.launcher_port = p('launcher_port', 0).value   # モード選択の画面 (0 なら無し)
         self.frame = p('frame', 'map').value
         self.base_frame = p('base_frame', 'base_link').value
         map_topic = p('map_topic', '/map').value
@@ -153,6 +154,7 @@ class WebGoal(Node):
                 'goal': dict(self.goal),
                 'nav2': self.client.server_is_ready(),
                 'frame': self.frame,
+                'launcher_port': self.launcher_port,
             }
             if self.pose:
                 x, y, yaw, t = self.pose
