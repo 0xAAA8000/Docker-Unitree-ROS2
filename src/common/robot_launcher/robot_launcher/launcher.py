@@ -45,7 +45,7 @@ MODES = {
     'goal': {'name': '目的地設定の自走', 'steps': ['stop', 'lidar', 'pose', 'nav2', 'web'],
              'available': True, 'note': '地図をタップして目的地へ自走する'},
     'calibration': {'name': 'キャリブレーション', 'steps': ['stop', 'lidar', 'pose', 'web'],
-                    'available': False, 'note': '準備中 (キャリブレーションの画面が未実装)'},
+                    'available': True, 'note': 'スロットルと舵角を計測する. 使う計測結果を選ぶ'},
     'explore': {'name': 'マップ自動生成の自走', 'steps': [], 'available': False,
                 'note': '準備中 (探索ノードが未実装)'},
 }

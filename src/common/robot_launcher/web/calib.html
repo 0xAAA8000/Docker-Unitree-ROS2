@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b2027">
+<title>走行キャリブレーション</title>
+<style>
+:root {
+  --bg: #eef0f3; --panel: #ffffff; --fg: #1b2027; --muted: #5d6773; --line: #d3d8de;
+  --accent: #1769c2; --accent-fg: #ffffff; --ok: #2b8a3e; --bad: #c62828; --sel: #e7f0fb;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #101317; --panel: #1b2027; --fg: #e8ebef; --muted: #9aa4b1; --line: #343c46;
+    --accent: #3d8bfd; --ok: #46c26a; --bad: #e5484d; --sel: #1d2b3d; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 560px; margin: 0 auto; display: grid; gap: 16px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+           calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+header { display: flex; align-items: center; gap: 12px; }
+header h1 { font-size: 1.25rem; margin: 0; flex: 1; }
+.sub { color: var(--muted); font-size: 0.9rem; margin: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+  display: grid; gap: 12px; }
+.card h2 { font-size: 1.05rem; margin: 0; }
+label { display: grid; gap: 4px; font-size: 0.95rem; }
+label small { color: var(--muted); }
+input[type=number], input[type=text] { font: inherit; padding: 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg); width: 100%; }
+.check { display: flex; gap: 8px; align-items: flex-start; }
+.check input { width: 22px; height: 22px; margin-top: 2px; flex: none; }
+button { font: inherit; font-weight: 600; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); cursor: pointer; padding: 0 14px; min-height: 44px; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.danger { background: var(--bad); color: #fff; border-color: var(--bad); min-height: 56px; font-size: 1.1rem; }
+.status { font-weight: 600; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--bad); }
+pre { margin: 0; max-height: 300px; overflow: auto; font-size: 11px; line-height: 1.35;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+  white-space: pre-wrap; word-break: break-all; }
+.runs { display: grid; gap: 8px; }
+.run { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+.run.selected { border-color: var(--accent); background: var(--sel); }
+.run .top { display: flex; gap: 8px; align-items: center; }
+.run .top b { flex: 1; font-variant-numeric: tabular-nums; }
+.run table { border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.run td { padding: 1px 10px 1px 0; color: var(--muted); }
+.run td + td { color: var(--fg); }
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; max-width: 90%; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>走行キャリブレーション</h1>
+    <button id="modes" hidden>モード選択へ</button>
+  </header>
+  <p class="sub" id="conn">接続中…</p>
+
+  <section class="card" id="startCard">
+    <h2>計測</h2>
+    <p class="sub">車が自分で前進・後退・旋回して, スロットルと速度, サーボ角と舵角の対応を計測します.</p>
+    <label>ホイールベース [m]
+      <input type="number" id="wheelbase" step="0.01" min="0.05" max="2" inputmode="decimal">
+    </label>
+    <label>後輪軸から LiDAR までの前方向の距離 [m]
+      <small>車体の中心ではなく後輪軸から. 前後の車軸が中心から等距離なら 0.12 + ホイールベース ÷ 2</small>
+      <input type="number" id="lidar_x" step="0.01" min="-1" max="2" inputmode="decimal">
+    </label>
+    <label>スロットル (任意. 空なら既定の 15,20,25,30,40,50)
+      <input type="text" id="throttles" placeholder="15,20,25,30,40,50" inputmode="numeric">
+    </label>
+    <label>サーボ角 (任意. 空なら既定の 40,55,70,85,100,115,130)
+      <input type="text" id="servos" placeholder="40,55,70,85,100,115,130" inputmode="numeric">
+    </label>
+    <label class="check"><input type="checkbox" id="confirm">
+      <span>周り半径 3 m に人や物が無いことを確認した</span></label>
+    <button class="primary" id="start" disabled>計測を開始</button>
+  </section>
+
+  <section class="card" id="jobCard" hidden>
+    <h2>計測中</h2>
+    <div class="status" id="jobStatus"></div>
+    <p class="sub" id="deadmanNote"></p>
+    <button class="danger" id="cancel">中止</button>
+    <pre id="log"></pre>
+  </section>
+
+  <section class="card">
+    <h2>計測結果</h2>
+    <p class="sub" id="selNote"></p>
+    <div class="runs" id="runs"></div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+<script>
+(() => {
+  'use strict';
+  const key = new URLSearchParams(location.search).get('key') || '';
+  const api = (p) => key ? p + (p.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(key) : p;
+  const $ = (id) => document.getElementById(id);
+  let st = null, launcherPort = 0, initialized = false, lastLines = '';
+
+  const fmt = (v, d) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+  const runTitle = (name) => {
+    const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/.exec(name);
+    return m ? `${m[1]}/${m[2]}/${m[3]} ${m[4]}:${m[5]}:${m[6]}` : name;
+  };
+
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, 3000);
+  }
+
+  async function post(path, body) {
+    try {
+      const r = await fetch(api(path), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}) });
+      return await r.json();
+    } catch (e) { return { ok: false, message: '接続できません' }; }
+  }
+
+  function renderRuns() {
+    const box = $('runs'); box.innerHTML = '';
+    $('selNote').textContent = st.selected
+      ? `使う計測結果: ${runTitle(st.selected)} (目的地設定の自走を起動し直すと反映されます)`
+      : '使う計測結果は選ばれていません (変換ノードは operation.yaml の仮の値を使います)';
+    if (!st.runs.length) { box.textContent = `${st.calib_dir} に計測結果はまだありません`; return; }
+    for (const r of st.runs) {
+      const div = document.createElement('div');
+      div.className = 'run' + (r.name === st.selected ? ' selected' : '');
+      const top = document.createElement('div'); top.className = 'top';
+      const b = document.createElement('b'); b.textContent = runTitle(r.name); top.appendChild(b);
+      if (r.name === st.selected) {
+        const s = document.createElement('span'); s.textContent = '使用中'; s.className = 'status ok'; top.appendChild(s);
+      } else if (r.has_summary) {
+        const btn = document.createElement('button'); btn.textContent = '使う';
+        btn.addEventListener('click', async () => { const x = await post('/api/select', { run: r.name }); toast(x.message); poll(); });
+        top.appendChild(btn);
+      }
+      div.appendChild(top);
+      if (r.values) {
+        const v = r.values, t = document.createElement('table');
+        const rows = [
+          ['前進 gain / deadband', `${fmt(v.forward_gain, 4)} / ${fmt(v.forward_deadband, 1)}`],
+          ['後退 gain / deadband', `${fmt(v.backward_gain, 4)} / ${fmt(v.backward_deadband, 1)}`],
+          ['サーボ中央 / K', `${fmt(v.servo_center, 1)}° / ${fmt(v.sine_ratio_K, 3)}`],
+          ['最大舵角 左 / 右', `${fmt(v.left_max, 1)}° / ${fmt(v.right_max, 1)}°`],
+          ['ホイールベース', `${fmt(v.wheelbase, 3)} m`],
+        ];
+        for (const [k, val] of rows) {
+          const tr = t.insertRow(); tr.insertCell().textContent = k; tr.insertCell().textContent = val;
+        }
+        div.appendChild(t);
+      } else {
+        const p = document.createElement('div'); p.className = 'sub';
+        p.textContent = r.has_summary ? 'summary.yaml を読めません' : '途中で止めた計測 (summary.yaml なし)';
+        div.appendChild(p);
+      }
+      box.appendChild(div);
+    }
+  }
+
+  function render() {
+    if (st.launcher_port) { launcherPort = st.launcher_port; $('modes').hidden = false; }
+    if (!initialized) {
+      $('wheelbase').value = st.defaults.wheelbase; $('lidar_x').value = st.defaults.lidar_x;
+      initialized = true;
+    }
+    const j = st.job, running = j.status === 'running' || j.status === 'canceling';
+    $('startCard').hidden = running;
+    $('jobCard').hidden = j.status === 'idle';
+    $('cancel').hidden = !running;
+    $('jobCard').querySelector('h2').textContent = running ? '計測中' : '前回の計測';
+    const s = $('jobStatus');
+    s.textContent = j.status === 'running' ? '計測中です. 車から離れてください'
+      : j.status === 'canceling' ? '中止しています…' : j.message;
+    s.className = 'status ' + (j.status === 'done' ? 'ok' : (j.status === 'failed' || j.status === 'canceled') ? 'bad' : '');
+    $('deadmanNote').textContent = running ? `この画面を閉じたり通信が ${st.deadman} 秒途切れたりすると, 計測は中止されます` : '';
+    const text = st.lines.join('\n');
+    if (text !== lastLines) {
+      const pre = $('log'), atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+      pre.textContent = text; lastLines = text;
+      if (atBottom) pre.scrollTop = pre.scrollHeight;
+    }
+    renderRuns();
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch(api('/api/state'), { cache: 'no-store' });
+      if (r.status === 403) { $('conn').textContent = 'URL の key が違います'; return; }
+      st = await r.json();
+      $('conn').textContent = '';
+      render();
+    } catch (e) {
+      $('conn').textContent = launcherPort ? '接続できません (モード切替中なら「モード選択へ」)' : '接続できません';
+    }
+  }
+
+  $('confirm').addEventListener('change', () => { $('start').disabled = !$('confirm').checked; });
+  $('start').addEventListener('click', async () => {
+    $('start').disabled = true;
+    const r = await post('/api/start', {
+      wheelbase: $('wheelbase').value, lidar_x: $('lidar_x').value,
+      throttles: $('throttles').value, servos: $('servos').value, confirmed: $('confirm').checked });
+    toast(r.message);
+    $('confirm').checked = false;
+    poll();
+  });
+  $('cancel').addEventListener('click', async () => { const r = await post('/api/cancel'); toast(r.message); poll(); });
+  $('modes').addEventListener('click', () => {
+    location.href = `${location.protocol}//${location.hostname}:${launcherPort}/` + (key ? '?key=' + encodeURIComponent(key) : '');
+  });
+
+  poll();
+  setInterval(poll, 1000);
+})();
+</script>
+</body>
+</html>
