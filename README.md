@@ -114,6 +114,9 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
 * LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
   `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。
+* 経路計画用の costmap (global) は、LiDAR の光線が通っていない場所 (壁の裏など) を「未知」として扱い、
+  経路計画はそこを一番重いコストで扱います (通れなくはないが、見えている道の約 4 倍のコスト)。
+  経路追従用 (local) は、未知を衝突とみなして止まらないよう、未知を空きとして扱います。
 * 止まっている間は Point-LIO に「速度 = 0」を観測として入れ (ZUPT)、IMU の加速度のずれで位置が流れるのを防ぎます。
   `stationary_detector` が、速度指令 (`/cmd_vel`) が 1 秒以上止まっていて、かつ IMU が静かなときに
   `/stationary` を true にします (`real.launch.py` が起動)。**速度指令を出さずに動かすとき**

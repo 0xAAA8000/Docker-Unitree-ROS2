@@ -54,7 +54,7 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      track_unknown_space: false    # 未知の領域を「空き」として扱う（探索しながらの走行向け）
+      track_unknown_space: false    # 経路追従 (RPP) は未知のセルを衝突とみなすので, local では未知を空きとして扱う
       footprint: "[[0.25, 0.15], [0.25, -0.15], [-0.25, -0.15], [-0.25, 0.15]]"   # 前後 0.50 x 横幅 0.30
       plugins: ["obstacle_layer", "inflation_layer"]
 
@@ -94,7 +94,8 @@ global_costmap:
       robot_base_frame: base_link
       use_sim_time: true
       resolution: 0.05
-      track_unknown_space: false    # 未知の領域を「空き」として扱う（探索しながらの走行向け）
+      track_unknown_space: true     # LiDAR の光線が通っていない場所 (壁の裏など) を「未知」にする.
+                                    # 経路計画は未知を一番重いコストで扱う (下の planner_server の説明)
       footprint: "[[0.25, 0.15], [0.25, -0.15], [-0.25, -0.15], [-0.25, 0.15]]"   # 前後 0.50 x 横幅 0.30
       footprint_padding: 0.03   # 経路計画時だけ車体を 3 cm 大きく見る. 0.15 だと幅 0.60 m になりドアをほぼ通れない
       rolling_window: true      # ← 追加（車両中心に追従）
@@ -145,7 +146,9 @@ planner_server:
       plugin: "nav2_smac_planner/SmacPlannerHybrid"
       motion_model_for_search: "REEDS_SHEPP"    # 前進のみ # 2026/10/05: "DUBIN"->"REEDS_SHEPP": RPPで後進を許可してるので、それに合わせる
       minimum_turning_radius: 0.75        # wheelbase 0.26 / tan(最大舵角 20 deg) ~= 0.71
-      allow_unknown: true
+      allow_unknown: true           # 未知も通れるが, 重さ 255 (障害物のすぐ横と同じ) として扱う.
+                                    # cost_penalty 3.0 では未知を 1 m 進むのが空きの約 4 m 分のコストになり,
+                                    # 壁の裏など見ていない場所は, ほかに道が無いときだけ通る
       max_planning_time: 15.0       # 既定 5.0
       downsample_costmap: false     # true にしない（Humble + rolling_window では原点がずれる）
       downsampling_factor: 2        # 0.1 m → 0.2 m 相当で探索
