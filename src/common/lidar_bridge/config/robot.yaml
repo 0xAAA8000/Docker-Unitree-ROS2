@@ -43,3 +43,13 @@ lidar_bridge:
     # 床が見えているセルに残った誤検知の障害物を消す. costmap の 1 セル (0.05 m) より大きくする
     clear_out: /lidar_clear
     ground_clear_extend: 0.10
+
+    # 坂の判定. 高さで障害物になった点のうち, 床から緩い傾きでつながっている所 (坂) を障害物から外す。
+    # 箱や台は上面が平らでも縁で高さが跳ぶので障害物のまま。詳しくは lidar_bridge_node.py の先頭
+    slope_filter: true
+    slope_max_deg: 15.0           # これより急な傾きは障害物
+    step_max: 0.06                # 隣のマスとの高さの差の上限 [m] (坂の 1 マス分 0.04 + ばらつき)
+    slope_cell: 0.15              # 高さを求めるマス [m]。L1 の点はまばらなので 0.10 より 0.15 のほうが坂を判定できる
+    slope_range: 4.0              # 判定する範囲 (車体の中心から前後左右) [m]。外は高さだけで判定
+    slope_min_points: 3           # 床以外のマスで判定に使う最小の点数 (まばらな壁を坂と誤らない)
+    traversable_out: /lidar_slope # 坂として外した点 (rviz での確認用)

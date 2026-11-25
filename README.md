@@ -128,6 +128,10 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
   床が見えているセルに残った誤検知の障害物も消えます。それでも残るときは、目的地の画面の「障害物を消す」で
   costmap の障害物をすべて消せます (見えている障害物はすぐ付き直ります)。
 * LiDAR は前に傾けて付けているので、車体の真横の低い所と後ろの低い所は見えません。
+* 坂: 高さで障害物になった点のうち、床から傾き `slope_max_deg` (15°) 以下・隣との段差 `step_max` (0.06 m) 以下で
+  つながっている所は坂として障害物から外します (`slope_filter`。車体の周り ±4 m)。箱や台は上面が平らでも、
+  縁の段差で床からつながらないので障害物のままです。点がまばらで途切れた坂は障害物のまま (安全側) です。
+  外した点は `/lidar_slope` に出るので rviz で確認できます。傾きは車体に対する値です。
 * 床が障害物として扱われる (Nav2 の経路が作れない) ときは、取付角度か `ground_z` が実機とずれています。
   平らな床に止めて LiDAR ドライバだけ起動し、`ros2 run lidar_bridge ground_check` を実行すると、
   床の点から `lidar_pitch_deg` / `lidar_roll_deg` / `ground_z` を推定して今の値と並べて表示します。

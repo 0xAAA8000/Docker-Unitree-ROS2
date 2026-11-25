@@ -19,6 +19,19 @@ sim (sim_gazebo/filter_invalid_points.py) との違い
   * frame_id を lidar_link / imu_link に付け替える. ドライバが出す
     unilidar_imu_initial -> unilidar_imu の TF (IMU の姿勢) とぶつからないようにするため
 
+坂の判定 (slope_filter が true のとき)
+  高さだけで判定すると, 緩い坂も地面から obstacle_min_height 以上になった所から障害物になる.
+  そこで車体の周り slope_range [m] の点を, 上から見た slope_cell [m] のマスに分けて
+  マスごとの高さ (平均) と厚み (最高 - 最低) を求め, 「床から坂を伝ってたどり着ける」マスを床から広げる.
+    * 出発点ははっきり床と言えるマス (点が slope_min_points 個以上, 高さ < obstacle_min_height の半分,
+      厚みが小さい). 点が 1 つのマスは, ばらつきで低く出ると段の上でも床に見えるため使わない
+    * 進めるのは隣 (8 方向) のマスで, 高さの差が step_max 以下 (段差の上限)
+    * 進んだ先の床以外のマスは, 点が slope_min_points 個以上, 厚みが小さく (壁や箱の側面は厚い),
+      周り 5 x 5 マスの高さに当てはめた平面の傾きが slope_max_deg 以下
+  たどり着けるマスの障害物の点は坂として障害物から外す. 箱や台は上面が平らでも, 縁の段差で
+  たどり着けないので障害物のまま. 点がまばらで途切れた坂も (安全側に) 障害物のまま. 範囲の外は高さだけで判定する.
+  高さは base_link 基準 (車体が傾くと一緒に傾く) なので, 傾きは車体に対する値になる.
+
 センサの途切れの補完 (gap_fill_timeout > 0 のとき)
   Point-LIO は点群が途切れると, その間を IMU だけで積分する. 再開時には位置が飛んで地図と
   照合できなくなり, 一方向に流れ続けたり, 別の場所に新しい地図を作り始めたりする.
@@ -179,6 +192,15 @@ class LidarBridge(Node):
             self.obs_range_min = self.range_min
         self.ground_extend = p('ground_clear_extend', 0.1).value   # 地面の点をずらす距離 [m] (0 で無効)
 
+        # 坂の判定 (ファイル先頭の説明)
+        self.slope_filter = p('slope_filter', True).value
+        self.slope_tan = math.tan(math.radians(p('slope_max_deg', 15.0).value))
+        self.step_max = p('step_max', 0.06).value               # 隣のマスとの高さの差の上限 (段差) [m]
+        self.slope_cell = p('slope_cell', 0.15).value            # マスの大きさ [m]
+        self.slope_range = p('slope_range', 4.0).value           # 判定する範囲 (base_link から ±) [m]
+        self.slope_min_pts = p('slope_min_points', 3).value
+        traversable_out = p('traversable_out', '/lidar_slope').value   # 坂として外した点 (確認用)
+
         # IMU 加速度の 1 次ローパスのカットオフ [Hz] (0 以下で無効).
         # LiDAR の回転で車体が振動し, そのノイズを Point-LIO が積分して静止中も動いてしまうため
         self.acc_lpf_hz = p('imu_acc_lpf_hz', 0.0).value
@@ -201,6 +223,7 @@ class LidarBridge(Node):
         self.pub = self.create_publisher(PointCloud2, cloud_out, 10)
         self.pub_obs = self.create_publisher(PointCloud2, obstacles_out, 10)
         self.pub_clear = self.create_publisher(PointCloud2, clear_out, 10)
+        self.pub_slope = self.create_publisher(PointCloud2, traversable_out, 10)
         self.pub_imu = self.create_publisher(Imu, imu_out, 50)
         self.create_subscription(PointCloud2, cloud_in, self.on_cloud, 10)
         self.create_subscription(Imu, imu_in, self.on_imu, 50)
@@ -210,7 +233,8 @@ class LidarBridge(Node):
         self.get_logger().info(
             f'{cloud_in} -> {cloud_out}, {obstacles_out} / {imu_in} -> {imu_out}  '
             f'mount xyz={t} rpy[deg]={[round(math.degrees(a), 1) for a in rpy]}  '
-            f'imu_acc_lpf_hz={self.acc_lpf_hz}  gap_fill_timeout={self.gap_timeout}')
+            f'imu_acc_lpf_hz={self.acc_lpf_hz}  gap_fill_timeout={self.gap_timeout}  '
+            f'slope_filter={self.slope_filter} (max {math.degrees(math.atan(self.slope_tan)):.0f}deg)')
 
     def on_imu(self, msg):
         t = to_sec(msg.header.stamp)
@@ -359,16 +383,100 @@ class LidarBridge(Node):
         h = base[:, 2] - self.ground_z              # 地面からの高さ
         near_keep = near_ok & ~in_self
         obs = near_keep & (h > self.obstacle_min) & (h < self.obstacle_max)
+        floor = h <= self.obstacle_min              # 床 (クリア用に奥へずらす点)
+        if self.slope_filter:
+            slope = obs & self.traversable(base, h, near_keep & (h < self.obstacle_max))
+            obs &= ~slope
+            floor |= slope
+            if self.pub_slope.get_subscription_count() > 0:
+                self.pub_slope.publish(make_cloud(msg, pts[slope], self.lidar_frame))
         self.pub_obs.publish(make_cloud(msg, pts[obs], self.lidar_frame))
         if self.pub_clear.get_subscription_count() > 0:
-            self.pub_clear.publish(self.clear_cloud(msg, pts, base, near_keep, h))
+            self.pub_clear.publish(self.clear_cloud(msg, pts, base, near_keep, floor))
 
-    def clear_cloud(self, msg, pts, base, mask, h):
-        """Nav2 のクリア用の点群. 地面の点だけ LiDAR から水平方向に ground_clear_extend 奥へずらす."""
+    def traversable(self, base, h, cand):
+        """各点が「床から坂を伝ってたどり着けるマス」にあるか (ファイル先頭の説明)."""
+        c, r = self.slope_cell, self.slope_range
+        w = int(math.ceil(2.0 * r / c))
+        sel = cand & (np.abs(base[:, 0]) < r) & (np.abs(base[:, 1]) < r)
+        out = np.zeros(len(h), dtype=bool)
+        if not sel.any():
+            return out
+        ix = np.clip(((base[sel, 0] + r) / c).astype(int), 0, w - 1)
+        iy = np.clip(((base[sel, 1] + r) / c).astype(int), 0, w - 1)
+        cell = ix * w + iy
+        hs = h[sel]
+        cnt = np.bincount(cell, minlength=w * w)
+        div = np.maximum(cnt, 1)
+        z = np.bincount(cell, weights=hs, minlength=w * w) / div               # マスの高さ
+        x = np.bincount(cell, weights=base[sel, 0], minlength=w * w) / div     # 点の重心
+        y = np.bincount(cell, weights=base[sel, 1], minlength=w * w) / div
+        zmin = np.full(w * w, np.inf)
+        zmax = np.full(w * w, -np.inf)
+        np.minimum.at(zmin, cell, hs)
+        np.maximum.at(zmax, cell, hs)
+        thin = (cnt > 0) & (zmax - zmin <= c * math.sqrt(2.0) * self.slope_tan + self.step_max)
+        ground = thin & (z < self.obstacle_min)
+        dense = thin & (cnt >= self.slope_min_pts)
+        z, x, y, ground, dense = (a.reshape(w, w) for a in (z, x, y, ground, dense))
+
+        def shift(a, dx, dy, fill):
+            """b[i, j] = a[i + dx, j + dy] (範囲外は fill)."""
+            b = np.full_like(a, fill)
+            b[max(0, -dx):w - max(0, dx), max(0, -dy):w - max(0, dy)] = \
+                a[max(0, dx):w - max(0, -dx), max(0, dy):w - max(0, -dy)]
+            return b
+
+        # 周り 5 x 5 マスの (x, y, z) に平面 z = a x + b y + d を最小二乗で当てはめる
+        usable = (ground | dense).astype(float)
+        names = ('n', 'x', 'y', 'z', 'xx', 'xy', 'yy', 'xz', 'yz')
+        x0, y0 = x * usable, y * usable     # 使わないマスは 0 にする (重み 0)
+        terms = dict(zip(names, (usable, x0, y0, z * usable, x0 * x, x0 * y, y0 * y, x0 * z, y0 * z)))
+        sums = {k: np.zeros((w, w)) for k in names}
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                for k in names:
+                    sums[k] += shift(terms[k], dx, dy, 0.0)
+        n_ = np.maximum(sums['n'], 1.0)
+        mx, my, mz = sums['x'] / n_, sums['y'] / n_, sums['z'] / n_
+        sxx = sums['xx'] / n_ - mx * mx
+        sxy = sums['xy'] / n_ - mx * my
+        syy = sums['yy'] / n_ - my * my
+        sxz = sums['xz'] / n_ - mx * mz
+        syz = sums['yz'] / n_ - my * mz
+        det = sxx * syy - sxy * sxy
+        ok_fit = (sums['n'] >= 4) & (det > (0.25 * c * c) ** 2)   # 点が一直線に並ぶときは傾きを決めない
+        safe = np.where(ok_fit, det, 1.0)
+        ga = (sxz * syy - syz * sxy) / safe
+        gb = (syz * sxx - sxz * sxy) / safe
+        gentle = ok_fit & (np.hypot(ga, gb) <= self.slope_tan)
+        passable = ground | (dense & gentle)
+
+        # 床から, 隣との段差が step_max 以下で通れるマスを広げる
+        links = []
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx or dy:
+                    ok = passable & shift(passable, dx, dy, False) & \
+                        (np.abs(z - shift(z, dx, dy, np.inf)) <= self.step_max)
+                    links.append((dx, dy, ok))
+        reach = dense & (z < 0.5 * self.obstacle_min)   # 出発点
+        for _ in range(w * 2):
+            grown = reach.copy()
+            for dx, dy, ok in links:
+                grown |= ok & shift(reach, dx, dy, False)
+            if np.array_equal(grown, reach):
+                break
+            reach = grown
+        out[np.flatnonzero(sel)] = reach.ravel()[cell]
+        return out
+
+    def clear_cloud(self, msg, pts, base, mask, floor):
+        """Nav2 のクリア用の点群. 床 (坂を含む) の点だけ LiDAR から水平方向に ground_clear_extend 奥へずらす."""
         sel = pts[mask].copy()
         if self.ground_extend > 0.0 and len(sel):
             b = base[mask].copy()
-            ground = h[mask] <= self.obstacle_min
+            ground = floor[mask]
             d = b[ground, :2] - self.trans[:2]
             n = np.linalg.norm(d, axis=1, keepdims=True)
             b[ground, :2] += d / np.maximum(n, 1e-6) * self.ground_extend
