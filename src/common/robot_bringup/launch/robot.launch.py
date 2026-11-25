@@ -106,6 +106,7 @@ def _rest(context):
             launch_arguments={
                 'robot': robot,
                 'pcd_file': LaunchConfiguration('map_pcd').perform(context),
+                'save_file': LaunchConfiguration('map_save').perform(context),
             }.items(),
         ))
     if flag(context, 'web'):
@@ -147,6 +148,8 @@ def generate_launch_description():
                               description='calibrate_drive の summary.yaml (空ならロボットの設定の仮の値)'),
         DeclareLaunchArgument('map_pcd', default_value='',
                               description='2D 地図の作成を始める前に読み込む保存済み地図 (.pcd)'),
+        DeclareLaunchArgument('map_save', default_value='',
+                              description='地図 (ボクセル地図) の保存先 .pcd (空なら ~/robot_maps/<起動日時>_map.pcd)'),
         DeclareLaunchArgument('web_token', default_value='',
                               description='設定すると URL に ?key=<token> が無いと操作できない'),
         DeclareLaunchArgument('launcher_port', default_value='0',

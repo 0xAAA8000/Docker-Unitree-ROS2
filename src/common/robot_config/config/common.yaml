@@ -74,6 +74,10 @@ nodes:
       gyr_cov_output: 1000.0      # 角速度のプロセスノイズ
     zupt:
       topic: /stationary          # 止まっている間は速度 = 0 を観測として入れる (stationary_detector の出力)
+    pcd_save:
+      # 地図の保存は robot_map のボクセル地図で行う. Point-LIO の保存は全スキャンをまとめずに
+      # メモリに貯め続ける (10 分で数百 MB) ので止める
+      pcd_save_en: false
 
   # L1 のドライバ (unitree_lidar_ros2_node). ポートはロボットの事実から
   unitree_lidar_l1:
@@ -102,6 +106,10 @@ nodes:
     chunk: 10.0
     occupied_min_hits: 3          # 障害物の点がこの回数以上で…
     occupied_ratio: 0.5           # …床の点のこの割合以上なら占有
+    # 3D のボクセル地図 (ボクセルの大きさは Point-LIO の filter_size_map, 保存先は launcher の map_dir が入る)
+    voxel_max_range: 15.0         # 車体からこれより遠い点は貯めない [m]
+    save_period: 60.0             # この秒数ごとと終了時に保存する (途中で落ちても失わないように)
+    save_min_hits: 2              # 保存するのは, この数以上のスキャンで点が入ったボクセル (通った人などを除く)
 
   # スマホから目的地を送る Web (robot_goal web). モード選択から起動したときのポートは launcher の mode_port
   robot_goal_web:

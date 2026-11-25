@@ -6,11 +6,20 @@
 購読: /cloud_registered (Point-LIO の 3D 点群. map 座標, 毎スキャン), TF (map -> base_link)
 配信: /map (transient_local なので, 後から起動した RViz や Web も最新の地図を受け取れる)
 
+3D の地図 (ボクセル地図)
+  同じ点群を voxel_size (Point-LIO の地図の粗さ filter_size_map と同じ値を robot_config が渡す) の
+  ボクセルに貯める. 同じ場所を何度見ても 1 つにまとめるのでメモリは増えにくい.
+  終了時 (Ctrl-C) と save_period 秒ごとに, save_min_hits 回以上点が入ったボクセルの中心を
+  PCD に書く (save_file. 空なら save_dir/<起動日時>_map.pcd). 地図の保存は Point-LIO ではなくここで行う
+  (Point-LIO の保存は全スキャンをまとめずにメモリに貯めるため止めてある)
+
 点の高さは base_link 座標に直してから判定する (obstacle_detector と同じ考え方).
 ground_z, obstacle_min_height, obstacle_max_height は obstacle_detector と同じ意味 (map.launch.py が robot_config から同じ値を渡す).
 """
 import array
 import math
+import os
+import time
 
 from nav_msgs.msg import OccupancyGrid
 import numpy as np
@@ -24,6 +33,7 @@ from sensor_msgs.msg import PointCloud2
 import tf2_ros
 
 from robot_map.grid import classify, cloud_xyz, estimate_ground, Grid, read_pcd_xyz
+from robot_map.voxels import VoxelMap
 
 
 def _rotation(q):
@@ -57,6 +67,16 @@ class MapNode(Node):
         self.obs_max = p('obstacle_max_height', 0.50).value
         self.max_range = p('max_range', 15.0).value
         period = p('publish_period', 1.0).value
+        # ボクセル地図
+        self.voxels = VoxelMap(p('voxel_size', 0.1).value)
+        self.voxel_range = p('voxel_max_range', 15.0).value     # 車体からこれより遠い点は貯めない [m]
+        save_file = p('save_file', '').value
+        save_dir = os.path.expanduser(p('save_dir', '~/robot_maps').value)
+        self.save_min_hits = p('save_min_hits', 2).value
+        save_period = p('save_period', 60.0).value
+        self.save_file = save_file or os.path.join(
+            save_dir, time.strftime('%Y%m%d_%H%M%S') + '_map.pcd')
+        self.saved_version = 0
         pcd_file = p('pcd_file', '').value
         pcd_ground = p('pcd_ground_z', float('nan')).value
         live = p('live', True).value
@@ -78,10 +98,14 @@ class MapNode(Node):
         if live:
             self.create_subscription(PointCloud2, self.cloud_topic, self.on_cloud, 5)
         self.create_timer(period, self.publish)
+        self.create_timer(1.0, self.voxels.merge)
+        if save_period > 0:
+            self.create_timer(save_period, self.save)
         self.get_logger().info(
             f'{self.cloud_topic if live else "(購読なし)"} -> {self.map_topic} '
             f'(解像度 {self.grid.res} m, 床 {self.ground_z:+.2f} m, '
-            f'障害物 {self.obs_min:.2f}..{self.obs_max:.2f} m)')
+            f'障害物 {self.obs_min:.2f}..{self.obs_max:.2f} m. ボクセル {self.voxels.size} m, '
+            f'保存先 {self.save_file})')
 
     def load_pcd(self, path, ground):
         try:
@@ -93,6 +117,9 @@ class MapNode(Node):
             ground = estimate_ground(xyz[:, 2])
         floor, obs = classify(xyz[:, 2], ground, self.floor_tol, self.obs_min, self.obs_max)
         self.grid.add(xyz[floor, :2], xyz[obs, :2])
+        # 保存済みの地図の点は, 何度も見た点として扱う (保存の基準 save_min_hits を満たす)
+        self.voxels.add(xyz, hits=max(1, self.save_min_hits))
+        self.voxels.merge()     # 保存先が別のファイルでも, 最初の保存で読み込んだ分も書く
         self.get_logger().info(
             f'{path}: {len(xyz)} 点を読み込み (床の高さ {ground:+.2f} m, 地図 {self.grid.shape[1]}'
             f' x {self.grid.shape[0]} セル)')
@@ -124,12 +151,29 @@ class MapNode(Node):
         if not len(xyz):
             return
         base = _apply(to_base, xyz)
-        near = base[:, 0] ** 2 + base[:, 1] ** 2 <= self.max_range ** 2
+        dist2 = base[:, 0] ** 2 + base[:, 1] ** 2
+        world_all = _apply(to_map, xyz)
+        self.voxels.add(world_all[dist2 <= self.voxel_range ** 2])
+        near = dist2 <= self.max_range ** 2
         base = base[near]
-        world = _apply(to_map, xyz[near])
+        world = world_all[near]
         floor, obs = classify(base[:, 2], self.ground_z, self.floor_tol, self.obs_min,
                               self.obs_max)
         self.grid.add(world[floor, :2], world[obs, :2])
+
+    def save(self):
+        """ボクセル地図を PCD に書く (変わっていなければ書かない)."""
+        self.voxels.merge()
+        if self.voxels.version == self.saved_version or not len(self.voxels):
+            return
+        try:
+            n = self.voxels.save_pcd(self.save_file, self.save_min_hits)
+        except OSError as e:
+            self.get_logger().error(f'地図を保存できない: {e}', throttle_duration_sec=60.0)
+            return
+        self.saved_version = self.voxels.version
+        self.get_logger().info(f'地図を保存した: {self.save_file} ({n} 点)',
+                               throttle_duration_sec=300.0)
 
     def publish(self):
         if self.grid.version == self.published or self.grid.ix0 is None:
@@ -157,6 +201,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        node.save()     # 終了時に地図を保存する (launcher はこのファイルを地図として扱う)
         node.destroy_node()
         rclpy.try_shutdown()
 

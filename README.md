@@ -161,8 +161,8 @@ ros2 run robot_config show nav2 --robot sim         # sim の Nav2 のパラメ�
   起動し直すので、地図と自己位置はモードごとに最初からになります。
 * モードごとの出力は `~/robot_logs/<日時>_<モード>.log` に保存されます。起動に失敗したときは、
   止まった段階とログの最後の部分が画面に出ます。
-* モードを止めるたびに、Point-LIO が保存した地図 (`PCD/scans.pcd`) を `~/robot_maps/<日時>_<モード>.pcd` に移します
-  (次のモードで上書きされないように)。
+* 目的地設定の自走では、`robot_map` が貯めた地図 (ボクセル地図) を `~/robot_maps/<日時>_goal.pcd` に保存します
+  (60 秒ごとと、モードを止めたとき)。キャリブレーションのモードは地図を作りません。
 * 自動起動 (`scripts/start_ros.sh`、`scripts/autostart/robot-bringup.sh`) はこの `launcher` を起動します。
   モードを順に止める時間が要るので、サービスの `TimeoutStopSec` は 60 秒程度にしてください。
 * `launcher` のポートや保存先は `robot_config` の `nodes.launcher` から読みます。各モードにはロボット名 (`robot:=`) を渡します。
@@ -191,7 +191,7 @@ ros2 run robot_launcher launcher --ros-args -p token:=abcd -p launch_args:="dry_
 ```bash
 ros2 launch robot_bringup robot.launch.py                        # 地図作り + Web
 ros2 launch robot_bringup robot.launch.py web_token:=abcd        # http://<IP>:8080/?key=abcd の人だけ操作できる
-ros2 launch robot_bringup robot.launch.py map_pcd:=$HOME/maps/scans.pcd   # 保存済みの地図から始める
+ros2 launch robot_bringup robot.launch.py map_pcd:=$HOME/robot_maps/<日時>_goal.pcd   # 保存済みの地図から始める
 ```
 
 単体で起動する場合:
@@ -242,8 +242,14 @@ Point-LIO の `/cloud_registered` (map 座標の点群、毎スキャン) を ba
   人が横切った跡は、その後に床がたくさん見えれば空きに戻ります。
 * ロボットから `max_range` (15 m) より遠い点は使いません。
 * `/map` は変化があったときに 1 秒ごとに配信します (transient_local なので、後から起動したノードも受け取れます)。
-* `pcd_file` を指定すると、保存済みの地図 (Point-LIO の `scans.pcd` など) を最初に読み込みます。
+* `pcd_file` を指定すると、保存済みの地図 (下のボクセル地図や、Point-LIO の `scans.pcd`) を最初に読み込みます。
   床の高さは点の高さの分布から自動で推定します (`pcd_ground_z` で指定も可)。
+* **地図の保存 (ボクセル地図)**: 同じ点群を、Point-LIO の地図の粗さ (`filter_size_map`、0.1 m) のボクセルにまとめて貯め、
+  60 秒ごとと終了時に `.pcd` (ボクセルの中心) に書きます。保存先は `save_file`
+  (`robot.launch.py` の `map_save:=`、空なら `~/robot_maps/<起動日時>_map.pcd`)。2 回以上のスキャンで点が入った
+  ボクセルだけを保存します (通った人などを除く)。同じ場所を何度見ても 1 つにまとまるので、100 万ボクセルで約 10 MB です。
+* Point-LIO の地図の保存 (`pcd_save_en`) は止めてあります。全スキャンの点をまとめずにメモリに貯め続け、
+  10 分ほどで数百 MB になるためです。
 * Nav2 は今のところ `/map` を使いません (global costmap は rolling window のまま)。図の Nav2 への `/map` は将来の案です。
 
 
@@ -373,8 +379,8 @@ ros2 run robot_operation drive_forward --speed 0.3 --duration 5 --bag ~/bags/for
 
 * Docker のコンテナで動かすときは、記録先をコンテナを終了しても消えない、マウントしている場所 (`/opt/common_ws/src` など) にします。
 * Ctrl-C で中止すると速度 0 を送ってから終了します。
-* Point-LIO が作った地図は、real.launch.py を Ctrl-C で終了したときに
-  `src/common/point_lio_ros2/PCD/scans.pcd` に保存されます (モード選択から起動したときは `~/robot_maps/` に移ります)。
+* 地図は `robot_map` が保存します ([地図の作り方](#地図の作り方-robot_map))。`real.launch.py` だけを起動したときは保存されません
+  (Point-LIO の保存は止めてある)。
 
 ## 走行キャリブレーション (`robot_operation calibrate_drive`)
 

@@ -169,7 +169,10 @@ class Config:
             },
             'robot_map': dict(sim_time, **ground,
                               obstacle_min_height=detector.get('obstacle_min_height'),
-                              obstacle_max_height=detector.get('obstacle_max_height')),
+                              obstacle_max_height=detector.get('obstacle_max_height'),
+                              # ボクセルは Point-LIO の地図の粗さに合わせる. 保存先は launcher と同じ
+                              voxel_size=float(self._raw('point_lio').get('filter_size_map', 0.1)),
+                              save_dir=launcher.get('map_dir', '~/robot_maps')),
             'cmd_vel_converter': dict(sim_time, port=arduino, cmd_vel_topic=cmd_vel,
                                       wheelbase=wheelbase),
             'robot_goal_web': dict(sim_time),

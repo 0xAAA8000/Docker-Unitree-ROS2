@@ -8,8 +8,8 @@
 防ぐ). 問題の切り分けのため, LiDAR ドライバや Point-LIO も含めてモードごとに起動し直す.
 
   * モードごとの出力は log_dir (~/robot_logs) に <日時>_<モード>.log として保存する
-  * モードを止めたとき, Point-LIO が保存した地図 (PCD/scans.pcd) を map_dir (~/robot_maps) に
-    <日時>_<モード>.pcd として移す (次のモードで上書きされないように)
+  * 目的地設定のモードでは, robot_map が貯めた地図 (ボクセル地図) を map_dir (~/robot_maps) の
+    <日時>_<モード>.pcd に保存させる (map_save:= で渡す. robot_map は 60 秒ごとと終了時に書く)
   * キャリブレーションのモードで選んだ計測結果 (calib_dir/selected) を, 目的地設定のモードの
     calibration_file に渡す
   * パラメータの既定値は robot_config (nodes.launcher) から読む (systemd から ros2 launch を挟まずに
@@ -18,14 +18,13 @@
 """
 import os
 import shlex
-import shutil
 import signal
 import subprocess
 import threading
 import time
 import urllib.request
 
-from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
+from ament_index_python.packages import get_package_share_directory
 from lifecycle_msgs.srv import GetState
 from nav_msgs.msg import Odometry
 import rclpy
@@ -68,19 +67,6 @@ def selected_calibration(calib_dir):
     return path if run and os.path.isfile(path) else ''
 
 
-def default_pcd_file():
-    """Point-LIO が終了時に地図を保存する場所 (ソースの PCD/scans.pcd).
-
-    --symlink-install でビルドしていれば, share/point_lio/config はソースへのリンクになっている.
-    """
-    try:
-        share = get_package_share_directory('point_lio')
-    except PackageNotFoundError:
-        return ''
-    src = os.path.dirname(os.path.realpath(os.path.join(share, 'config')))
-    return os.path.join(src, 'PCD', 'scans.pcd')
-
-
 def tail(path, n=40):
     try:
         with open(path, 'rb') as f:
@@ -110,7 +96,6 @@ class Launcher(Node):
         self.calib_dir = os.path.expanduser(p('calib_dir', '~/drive_calib').value)
         self.log_dir = os.path.expanduser(p('log_dir', '~/robot_logs').value)
         self.map_dir = os.path.expanduser(p('map_dir', '~/robot_maps').value)
-        self.pcd_file = p('pcd_file', '').value or default_pcd_file()
         self.start_timeout = p('start_timeout', 90.0).value
         self.stop_timeout = p('stop_timeout', 30.0).value
         self.start_mode = p('start_mode', '').value         # 起動時に自動で始めるモード (空なら待つ)
@@ -129,7 +114,8 @@ class Launcher(Node):
         self.fail_tail = []
         self.last_map = ''
         self.proc = None
-        self.proc_mode = None        # 今のプロセスのモード (地図のファイル名に使う)
+        self.proc_mode = None        # 今のプロセスのモード
+        self.map_file = ''           # 今のモードが地図を保存するファイル (無ければ '')
         self.mode_started_wall = 0.0
         self.abort = threading.Event()
         self.worker = None
@@ -194,10 +180,14 @@ class Launcher(Node):
                    f'web_port:={self.mode_port}'] + common
             if self.token:
                 cmd.append(f'web_token:={self.token}')
+            stamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(self.mode_started_wall))
+            self.map_file = os.path.join(self.map_dir, f'{stamp}_{mode}.pcd')
+            cmd.append(f'map_save:={self.map_file}')
             calib = selected_calibration(self.calib_dir)
             if calib:
                 cmd.append(f'calibration_file:={calib}')
         else:
+            self.map_file = ''      # キャリブレーションのモードは地図を作らない
             cmd = ['ros2', 'launch', 'robot_launcher', 'calibration.launch.py',
                    f'port:={self.mode_port}', f'calib_dir:={self.calib_dir}'] + common
             if self.token:
@@ -235,20 +225,12 @@ class Launcher(Node):
         self.save_map()
 
     def save_map(self):
-        """Point-LIO が終了時に保存した地図を, 次のモードで上書きされないよう移す."""
-        if not self.pcd_file or not os.path.isfile(self.pcd_file):
-            return
-        if os.path.getmtime(self.pcd_file) < self.mode_started_wall:
-            return
-        os.makedirs(self.map_dir, exist_ok=True)
-        stamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(self.mode_started_wall))
-        dst = os.path.join(self.map_dir, f'{stamp}_{self.proc_mode}.pcd')
-        try:
-            shutil.move(self.pcd_file, dst)
-            self.last_map = dst
-            self.get_logger().info(f'地図を保存した: {dst}')
-        except OSError as e:
-            self.get_logger().warn(f'地図を移せない: {e}')
+        """モードが保存した地図 (robot_map のボクセル地図) を最後の地図として覚える."""
+        path = self.map_file
+        # ファイルの時刻は粗い時計で記録され, 起動時刻よりわずかに前になることがあるので 2 秒の余裕を見る
+        if path and os.path.isfile(path) and os.path.getmtime(path) >= self.mode_started_wall - 2.0:
+            self.last_map = path
+            self.get_logger().info(f'地図: {path}')
 
     def set(self, gen, **kw):
         """gen が今の世代のときだけ状態を書き換える."""
@@ -390,6 +372,9 @@ class Launcher(Node):
                 else:
                     st = 'pending'
                 status.append({'id': s, 'name': STEP_NAMES[s], 'status': st})
+            stamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(self.mode_started_wall))
+            self.map_file = os.path.join(self.map_dir, f'{stamp}_{mode}.pcd')
+            cmd.append(f'map_save:={self.map_file}')
             calib = selected_calibration(self.calib_dir)
             return {
                 'phase': self.phase,
@@ -445,7 +430,7 @@ def main():
     key = f'/?key={node.token}' if node.token else '/'
     node.get_logger().info(f'モード選択: http://<このマシンの IP>:{node.port}{key} '
                            f'(モードの画面は {node.mode_port}, ログ {node.log_dir}, '
-                           f'地図 {node.map_dir}, PCD {node.pcd_file or "(不明)"})')
+                           f'地図 {node.map_dir})')
     if node.start_mode:
         ok, msg = node.start(node.start_mode)
         node.get_logger().info(f'起動時のモード {node.start_mode}: {msg}')
