@@ -67,7 +67,7 @@ local_costmap:
           max_obstacle_height: 100.0     # ※観測ごとの既定値は 0.0。必ず指定する
           obstacle_max_range: 20.0
         ground_clear:                    # 空きセルのクリア：地面を含む全点へレイを飛ばす
-          topic: /lidar
+          topic: /lidar_clear            # obstacle_detector が床の点を少し奥へずらしたもの (床の上の誤検知も消える)
           data_type: "PointCloud2"
           marking: False
           clearing: True
@@ -111,7 +111,7 @@ global_costmap:
           max_obstacle_height: 100.0     # ※観測ごとの既定値は 0.0。必ず指定する
           obstacle_max_range: 20.0
         ground_clear:                    # 空きセルのクリア：地面を含む全点へレイを飛ばす
-          topic: /lidar
+          topic: /lidar_clear            # obstacle_detector が床の点を少し奥へずらしたもの (床の上の誤検知も消える)
           data_type: "PointCloud2"
           marking: False
           clearing: True

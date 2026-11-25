@@ -129,7 +129,7 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
   (手で持って動かす試験、`calibrate_drive` で Arduino を直接動かすときなど) は、
   等速で動いていると止まっていると誤判定するので `zupt:=false` で起動してください。
 * 障害物 (`/lidar_obstacles`) は LiDAR から `obstacle_range_min` (0.08 m) 以上の点から作ります
-  (Point-LIO 用の `range_min` 0.30 m とは別。車体の点は `self_box_*` で除きます)。
+  (Point-LIO は自分の `preprocess.blind` (0.5 m) より近い点を捨てるので、それとは別。車体の点は `self_box_*` で除きます)。
   Nav2 のクリアには `/lidar_clear` を使います。床の点を LiDAR から水平に `ground_clear_extend` (0.10 m) 奥へずらしてあり、
   床が見えているセルに残った誤検知の障害物も消えます。それでも残るときは、目的地の画面の「障害物を消す」で
   costmap の障害物をすべて消せます (見えている障害物はすぐ付き直ります)。

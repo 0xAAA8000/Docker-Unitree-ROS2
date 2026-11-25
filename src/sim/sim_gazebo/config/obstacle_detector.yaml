@@ -1,0 +1,30 @@
+# sim の障害物の判定 (obstacle_detector). 実機の値は lidar_bridge/config/robot.yaml
+# filter_invalid_points が出す /lidar (無効点と自車体の点を除いたもの) を使う.
+# 以前 filter_invalid_points が LiDAR 座標で行っていた判定と同じ値を base_link 座標に直してある.
+obstacle_detector:
+  ros__parameters:
+    cloud_in: /lidar
+    obstacles_out: /lidar_obstacles
+    clear_out: /lidar_clear
+    slope_out: /lidar_slope
+    # urdf/four_wheel_car.urdf の lidar_joint (前 0.2 m, 上 0.25 m, 傾きなし)
+    lidar_x: 0.2
+    lidar_y: 0.0
+    lidar_z: 0.25
+    lidar_roll_deg: 0.0
+    lidar_pitch_deg: 0.0
+    lidar_yaw_deg: 0.0
+    # 自車体の箱 (filter_invalid_points の SELF_BOX を base_link 座標にしたもの)
+    self_box_min: [-0.65, -0.40, -0.20]
+    self_box_max: [0.65, 0.40, 0.35]
+    ground_z: -0.10               # 地面は LiDAR の 0.35 m 下
+    obstacle_min_height: 0.15
+    obstacle_max_height: 0.5
+    obstacle_range_min: 0.0       # Gazebo の LiDAR は 0.15 m 未満を返さない
+    ground_clear_extend: 0.10
+    slope_filter: true
+    slope_max_deg: 15.0
+    step_max: 0.06
+    slope_cell: 0.15
+    slope_range: 4.0
+    slope_min_points: 3

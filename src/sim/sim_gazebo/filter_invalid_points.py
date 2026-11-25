@@ -16,19 +16,14 @@ SELF_BOX_MAX = np.array([ 0.45,  0.40,  0.10])
 
 
 class FilterInvalidPoints(Node):
-    """inf/NaN 点を除去し、方位角から time フィールドを付けて/lidarに再配信する。
-    地面を除いた障害物を/lidar_obstaclesに配信する。
-    実機(L1, L2)では無効点は配信されず、また時間フィールドも一緒に送られてくるので、障害物判定の点群のみ配信すればいい"""
+    """inf/NaN 点と自車体の点を除去し、方位角から time フィールドを付けて /lidar に再配信する。
+    障害物の判定は実機と同じ obstacle_detector が /lidar から行う (bridge.launch.py が起動)。
+    実機(L1, L2)では無効点は配信されず、また時間フィールドも一緒に送られてくるので、lidar_bridge は名前の付け替えだけ"""
 
     def __init__(self):
         super().__init__('filter_invalid_points')
-        self.ground_z = self.declare_parameter('ground_z', -0.35).value                 # LiDAR から見た地面の z
-        self.obstacle_min = self.declare_parameter('obstacle_min_height', 0.15).value  # 地面からの高さ
-        self.obstacle_max = self.declare_parameter('obstacle_max_height', 0.5).value   # 地面からの高さ
-
         self.sub = self.create_subscription(PointCloud2, '/lidar_raw', self.cb, 10)
         self.pub = self.create_publisher(PointCloud2, '/lidar', 10)
-        self.pub_obs = self.create_publisher(PointCloud2, '/lidar_obstacles', 10)
 
     def cb(self, msg: PointCloud2):
         fields = [f for f in msg.fields if f.name != 'time']
@@ -70,11 +65,6 @@ class FilterInvalidPoints(Node):
             PointField(name='time', offset=msg.point_step, datatype=PointField.FLOAT32, count=1)
         ]
         self.pub.publish(self.make_cloud(msg, out_fields, out_step, out_pts))
-
-        # LiDAR 座標系の z で地面を判定し、障害物の高さ帯の点だけを残す
-        h = out_pts['z'] - self.ground_z                 # 地面からの高さ
-        obs_pts = out_pts[(h > self.obstacle_min) & (h < self.obstacle_max)]
-        self.pub_obs.publish(self.make_cloud(msg, out_fields, out_step, obs_pts))
 
     @staticmethod
     def make_cloud(src, fields, point_step, pts):

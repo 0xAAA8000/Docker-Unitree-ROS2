@@ -32,7 +32,7 @@ lidar_bridge:
     # 自車体の点を除く箱. 車体 (前後 ±0.25, 左右 ±0.15) より 3 cm 大きく, 地面 (z=-0.16) は含めない.
     self_box_min: [-0.28, -0.18, -0.13]
     self_box_max: [0.28, 0.18, 0.20]   # z は障害物の上限 (地面から 0.35 m = z 0.19) より上. 車体の上の部品を障害物にしない
-    range_min: 0.30               # LiDAR からこの距離未満の点は捨てる (Point-LIO 用)
+    # LiDAR から近すぎる点は Point-LIO が捨てる (point_lio_ros2/config/unilidar_l1.yaml の preprocess.blind: 0.5)
 
 # Nav2 の障害物とクリア用の点群を作る (obstacle_detector)。/lidar_full を購読する
 obstacle_detector:
@@ -45,8 +45,8 @@ obstacle_detector:
     ground_z: -0.16               # base_linkから見た地面の z (車体の中心が地面から 0.16 m)
     obstacle_min_height: 0.10     # 地面からこの高さ以上を障害物とする
     obstacle_max_height: 0.35     # 地面からこの高さ未満を障害物とする (これより上は車体に当たらない)
-    # LiDAR からの最小距離. 車体の点は lidar_bridge の self_box_* で除くので
-    # lidar_bridge の range_min (Point-LIO 用) より小さくしてよい. 0.30 だと車体の前 0.17 m, 横 0.26 m 以内の障害物が見えなかった
+    # LiDAR からの最小距離. 車体の点は lidar_bridge の self_box_* で除くので小さくしてよい.
+    # 0.30 だと車体の前 0.17 m, 横 0.26 m 以内の障害物が見えなかった
     obstacle_range_min: 0.08
     # Nav2 のクリア用に地面の点を LiDAR から水平方向にずらす距離 [m] (0 で無効).
     # 床が見えているセルに残った誤検知の障害物を消す. costmap の 1 セル (0.05 m) より大きくする

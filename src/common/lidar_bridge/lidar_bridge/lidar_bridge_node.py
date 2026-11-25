@@ -1,6 +1,6 @@
 """Unitree L1/L2 ドライバのトピックを, sim と同じ名前・形で Point-LIO と障害物の検知に配信する.
 
-  /unilidar/cloud --(自車体・近すぎる点を除去)--> /lidar       (Point-LIO)
+  /unilidar/cloud --(自車体の点を除去)----------> /lidar       (Point-LIO. 近すぎる点は Point-LIO の blind で捨てる)
                   --(frame_id の付け替えだけ)---> /lidar_full  (obstacle_detector. 購読者がいるときだけ)
   /unilidar/imu   --(frame_id だけ付け替え)-----> /imu         (Point-LIO)
 
@@ -158,10 +158,9 @@ class LidarBridge(Node):
         self.rot = rotation_rpy(*rpy)
         self.trans = np.array(t)
 
-        # 自車体の点を除く箱 (base_link 座標) と, LiDAR からの最小距離 (Point-LIO 用)
+        # 自車体の点を除く箱 (base_link 座標). 近すぎる点は Point-LIO が preprocess.blind で捨てる
         self.self_min = np.array(p('self_box_min', [-0.4, -0.25, -0.2]).value, dtype=float)
         self.self_max = np.array(p('self_box_max', [0.4, 0.25, 0.4]).value, dtype=float)
-        self.range_min = p('range_min', 0.3).value                  # LiDAR からの距離 [m]
 
         # IMU 加速度の 1 次ローパスのカットオフ [Hz] (0 以下で無効).
         # LiDAR の回転で車体が振動し, そのノイズを Point-LIO が積分して静止中も動いてしまうため
@@ -325,7 +324,6 @@ class LidarBridge(Node):
         xyz = np.column_stack([pts['x'], pts['y'], pts['z']]).astype(np.float64)
         valid = np.isfinite(xyz).all(axis=1)
         xyz[~valid] = 0.0
-        valid &= np.einsum('ij,ij->i', xyz, xyz) >= self.range_min ** 2
 
         base = xyz @ self.rot.T + self.trans        # LiDAR 座標 -> base_link 座標
         in_self = np.all((base > self.self_min) & (base < self.self_max), axis=1)

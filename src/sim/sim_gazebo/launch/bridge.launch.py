@@ -52,6 +52,16 @@ def generate_launch_description():
         output='screen'
     )
 
+    # 障害物の判定は実機と同じ obstacle_detector で行う (/lidar -> /lidar_obstacles, /lidar_clear)
+    obstacle_detector = Node(
+        package='obstacle_detector',
+        executable='obstacle_detector',
+        name='obstacle_detector',
+        parameters=[os.path.join(pkg_sim_gazebo, 'config', 'obstacle_detector.yaml'),
+                    {'use_sim_time': True}],
+        output='screen'
+    )
+
     urdf_path = os.path.join(pkg_sim_gazebo, 'urdf/four_wheel_car.urdf')
     with open(urdf_path, 'r') as infp:
         robot_desc = infp.read()
@@ -154,6 +164,7 @@ def generate_launch_description():
         gazebo,
         bridge,
         filter_invalid_points,
+        obstacle_detector,
         robot_state_publisher,
         spawn_robot,
         # spawn 完了後に順番に起動する（先に走らせると controller_manager がまだ無い）
