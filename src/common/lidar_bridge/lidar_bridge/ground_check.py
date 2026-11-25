@@ -128,12 +128,15 @@ class GroundCheck(Node):
         config = self.declare_parameter('config', default).value
         topic = self.declare_parameter('cloud_topic', '/unilidar/cloud').value
         with open(config) as f:
-            prm = yaml.safe_load(f)['lidar_bridge']['ros__parameters']
+            doc = yaml.safe_load(f)
+        prm = dict(doc['lidar_bridge']['ros__parameters'])
+        # 地面の高さと障害物の高さは obstacle_detector の項にある
+        prm.update((doc.get('obstacle_detector') or {}).get('ros__parameters') or {})
         self.mount = {k: float(prm.get(k, v)) for k, v in (
             ('lidar_x', 0.2), ('lidar_y', 0.0), ('lidar_z', 0.25), ('lidar_roll_deg', 0.0),
             ('lidar_pitch_deg', 0.0), ('lidar_yaw_deg', 0.0), ('ground_z', -0.1),
             ('obstacle_min_height', 0.15), ('obstacle_max_height', 0.5))}
-        self.range_min = float(prm.get('range_min', 0.3))
+        self.range_min = float(prm.get('obstacle_range_min', prm.get('range_min', 0.3)))
         self.self_min = np.array(prm.get('self_box_min', [-0.4, -0.25, -0.2]), dtype=float)
         self.self_max = np.array(prm.get('self_box_max', [0.4, 0.25, 0.4]), dtype=float)
         self.buf = []

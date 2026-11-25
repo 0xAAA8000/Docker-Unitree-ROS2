@@ -1,12 +1,13 @@
 # 実機の LiDAR 取付とフィルタの設定。値は実機に合わせて測って書き換えること。
 # lidar_x..lidar_yaw_deg は real.launch.py の静的 TF (base_link -> lidar_link,
-# aft_mapped -> base_link) にも使われる。
+# aft_mapped -> base_link) にも使われる。lidar_x..lidar_yaw_deg と self_box_* は
+# real.launch.py が obstacle_detector にも渡す (同じ値を 2 か所に書かない)。
 lidar_bridge:
   ros__parameters:
     cloud_in: /unilidar/cloud
     imu_in: /unilidar/imu
     cloud_out: /lidar
-    obstacles_out: /lidar_obstacles
+    full_out: /lidar_full         # frame_id を付け替えただけの点群 (obstacle_detector 用)
     imu_out: /imu
     lidar_frame: lidar_link
     imu_frame: imu_link
@@ -28,28 +29,34 @@ lidar_bridge:
     lidar_pitch_deg: 31.4
     lidar_yaw_deg: 0.0
 
-    # 以下は base_link 座標 [m]
-    ground_z: -0.16               # base_linkから見た地面の z (車体の中心が地面から 0.16 m)
-    obstacle_min_height: 0.10     # 地面からこの高さ以上を障害物とする
-    obstacle_max_height: 0.35     # 地面からこの高さ未満を障害物とする (これより上は車体に当たらない)
     # 自車体の点を除く箱. 車体 (前後 ±0.25, 左右 ±0.15) より 3 cm 大きく, 地面 (z=-0.16) は含めない.
     self_box_min: [-0.28, -0.18, -0.13]
     self_box_max: [0.28, 0.18, 0.20]   # z は障害物の上限 (地面から 0.35 m = z 0.19) より上. 車体の上の部品を障害物にしない
     range_min: 0.30               # LiDAR からこの距離未満の点は捨てる (Point-LIO 用)
-    # 障害物 (/lidar_obstacles) とクリア用 (/lidar_clear) の点の最小距離. 車体の点は上の箱で除くので
-    # range_min より小さくしてよい. 0.30 だと車体の前 0.17 m, 横 0.26 m 以内の障害物が見えなかった
+
+# Nav2 の障害物とクリア用の点群を作る (obstacle_detector)。/lidar_full を購読する
+obstacle_detector:
+  ros__parameters:
+    cloud_in: /lidar_full
+    obstacles_out: /lidar_obstacles
+    clear_out: /lidar_clear
+    slope_out: /lidar_slope       # 坂として障害物から外した点 (rviz での確認用)
+    # 以下は base_link 座標 [m]
+    ground_z: -0.16               # base_linkから見た地面の z (車体の中心が地面から 0.16 m)
+    obstacle_min_height: 0.10     # 地面からこの高さ以上を障害物とする
+    obstacle_max_height: 0.35     # 地面からこの高さ未満を障害物とする (これより上は車体に当たらない)
+    # LiDAR からの最小距離. 車体の点は lidar_bridge の self_box_* で除くので
+    # lidar_bridge の range_min (Point-LIO 用) より小さくしてよい. 0.30 だと車体の前 0.17 m, 横 0.26 m 以内の障害物が見えなかった
     obstacle_range_min: 0.08
     # Nav2 のクリア用に地面の点を LiDAR から水平方向にずらす距離 [m] (0 で無効).
     # 床が見えているセルに残った誤検知の障害物を消す. costmap の 1 セル (0.05 m) より大きくする
-    clear_out: /lidar_clear
     ground_clear_extend: 0.10
 
     # 坂の判定. 高さで障害物になった点のうち, 床から緩い傾きでつながっている所 (坂) を障害物から外す。
-    # 箱や台は上面が平らでも縁で高さが跳ぶので障害物のまま。詳しくは lidar_bridge_node.py の先頭
+    # 箱や台は上面が平らでも縁で高さが跳ぶので障害物のまま。詳しくは obstacle_detector.py の先頭
     slope_filter: true
     slope_max_deg: 15.0           # これより急な傾きは障害物
     step_max: 0.06                # 隣のマスとの高さの差の上限 [m] (坂の 1 マス分 0.04 + ばらつき)
     slope_cell: 0.15              # 高さを求めるマス [m]。L1 の点はまばらなので 0.10 より 0.15 のほうが坂を判定できる
     slope_range: 4.0              # 判定する範囲 (車体の中心から前後左右) [m]。外は高さだけで判定
     slope_min_points: 3           # 床以外のマスで判定に使う最小の点数 (まばらな壁を坂と誤らない)
-    traversable_out: /lidar_slope # 坂として外した点 (rviz での確認用)

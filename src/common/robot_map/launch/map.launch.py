@@ -1,4 +1,4 @@
-"""2D 地図ノード (robot_map) を起動する. 高さの判定には lidar_bridge の robot.yaml の値を使う.
+"""2D 地図ノード (robot_map) を起動する. 高さの判定には robot.yaml (obstacle_detector の項) の値を使う.
 
   ros2 launch robot_map map.launch.py
   ros2 launch robot_map map.launch.py pcd_file:=$HOME/maps/scans.pcd   # 保存済みの地図から始める
@@ -13,14 +13,16 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import yaml
 
-# robot.yaml (lidar_bridge) から引き継ぐパラメータ
+# robot.yaml から引き継ぐパラメータ (obstacle_detector の項. 古い robot.yaml なら lidar_bridge の項)
 _FROM_ROBOT = ('ground_z', 'obstacle_min_height', 'obstacle_max_height')
 
 
 def _setup(context):
     config = LaunchConfiguration('config').perform(context)
     with open(config) as f:
-        prm = yaml.safe_load(f)['lidar_bridge']['ros__parameters']
+        doc = yaml.safe_load(f)
+    prm = dict((doc.get('lidar_bridge') or {}).get('ros__parameters') or {})
+    prm.update((doc.get('obstacle_detector') or {}).get('ros__parameters') or {})
     params = {k: float(prm[k]) for k in _FROM_ROBOT if k in prm}
     params.update({
         'resolution': float(LaunchConfiguration('resolution').perform(context)),

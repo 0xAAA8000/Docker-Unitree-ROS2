@@ -90,10 +90,14 @@ L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
 
 sim と同じトピック・TF にそろえて、Point-LIO → Nav2 → Arduino の順につなぎます。
 
-```
-unitree_lidar_ros2 ──/unilidar/cloud, /unilidar/imu──▶ lidar_bridge ──/lidar, /imu──▶ Point-LIO
-                                                                    └─/lidar, /lidar_obstacles──▶ Nav2 ──/cmd_vel──▶ cmd_vel_converter ──serial──▶ Arduino
-```
+| ノード | 受け取る | 出す |
+| --- | --- | --- |
+| unitree_lidar_ros2 (LiDAR ドライバ) | — | `/unilidar/cloud`, `/unilidar/imu` |
+| lidar_bridge (名前の付け替え) | `/unilidar/cloud`, `/unilidar/imu` | `/lidar`, `/imu` (Point-LIO 用), `/lidar_full` (障害物の検知用) |
+| Point-LIO | `/lidar`, `/imu` | 自己位置 |
+| obstacle_detector (障害物の検知) | `/lidar_full` | `/lidar_obstacles`, `/lidar_clear` (Nav2 用), `/lidar_slope` (確認用) |
+| Nav2 | 自己位置, `/lidar_obstacles`, `/lidar_clear` | `/cmd_vel` |
+| cmd_vel_converter | `/cmd_vel` | シリアル (Arduino) |
 
 ```bash
 # 1. LiDAR ドライバ
@@ -111,8 +115,9 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
   `navigation.launch.py` は既定で実機用 (`use_sim_time:=false`、`publish_base_tf:=false`、
   `cmd_vel_topic:=/cmd_vel`、`nav2_params_real.yaml`) で起動し、`sim:=true` でこれらがまとめて sim 用になります。
   個別に指定した引数は `sim` より優先されます。
-* LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、地面の高さ、自車体の箱は
-  `src/common/lidar_bridge/config/robot.yaml` で設定します。障害物の高さ判定は、この取付姿勢で
+* LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、自車体の箱は
+  `src/common/lidar_bridge/config/robot.yaml` の `lidar_bridge` の項、地面の高さと障害物の判定は同じファイルの
+  `obstacle_detector` の項で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。
 * 経路計画用の costmap (global) は、LiDAR の光線が通っていない場所 (壁の裏など) を「未知」として扱い、
   経路計画はそこを一番重いコストで扱います (通れなくはないが、見えている道の約 4 倍のコスト)。
@@ -326,7 +331,7 @@ Point-LIO の `/cloud_registered` (map 座標の点群、毎スキャン) を ba
 5 cm 四方のセルごとに数えます。
 
 * 床から ±`floor_tolerance` (5 cm) の点 → 床、`obstacle_min_height`〜`obstacle_max_height` の点 → 障害物。
-  `ground_z` と障害物の高さは lidar_bridge の `robot.yaml` と同じ値を使います。
+  `ground_z` と障害物の高さは `robot.yaml` (`obstacle_detector` の項) と同じ値を使います。
 * 障害物の点が 3 回以上で、かつ床の点の半分以上ならそのセルは占有、床だけなら空き、どちらも無ければ未知です。
   人が横切った跡は、その後に床がたくさん見えれば空きに戻ります。
 * ロボットから `max_range` (15 m) より遠い点は使いません。

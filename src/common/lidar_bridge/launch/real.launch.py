@@ -1,7 +1,9 @@
 """実機 (Unitree L1/L2) 用: ドライバの出力を sim と同じトピック・TF にそろえて Point-LIO を起動する.
 
 起動するもの
-  * lidar_bridge     : /unilidar/cloud, /unilidar/imu -> /lidar, /lidar_obstacles, /imu
+  * lidar_bridge     : /unilidar/cloud, /unilidar/imu -> /lidar, /lidar_full, /imu
+  * obstacle_detector: /lidar_full -> /lidar_obstacles, /lidar_clear (Nav2 の障害物とクリア用.
+                       obstacles:=false で起動しない)
   * 静的 TF          : map -> camera_init, aft_mapped -> base_link,
                        base_link -> lidar_link, base_link -> imu_link
   * Point-LIO        : /lidar, /imu を購読 (point_lio:=false で起動しない)
@@ -94,6 +96,19 @@ def _setup(context):
         _static_tf('base_link_to_imu', 'base_link', imu_frame, t, rpy),
     ]
 
+    # 障害物の検知. 取付位置・姿勢と自車体の箱は lidar_bridge の項と同じ値を渡す
+    shared = {k: prm[k] for k in (
+        'lidar_x', 'lidar_y', 'lidar_z', 'lidar_roll_deg', 'lidar_pitch_deg', 'lidar_yaw_deg',
+        'self_box_min', 'self_box_max') if k in prm}
+    actions.append(Node(
+        package='obstacle_detector',
+        executable='obstacle_detector',
+        name='obstacle_detector',
+        output='screen',
+        parameters=[config, shared],
+        condition=IfCondition(LaunchConfiguration('obstacles')),
+    ))
+
     zupt = LaunchConfiguration('zupt').perform(context).lower() == 'true'
     if zupt:
         actions.append(Node(
@@ -167,6 +182,8 @@ def generate_launch_description():
                               description='取付位置・フィルタの設定'),
         DeclareLaunchArgument('gap_fill_timeout', default_value='',
                               description='点群の途切れの補完を始めるまでの時間 [s] (0 で無効, 空なら robot.yaml の値)'),
+        DeclareLaunchArgument('obstacles', default_value='true',
+                              description='Nav2 の障害物を作る obstacle_detector を起動するか'),
         DeclareLaunchArgument('point_lio', default_value='true',
                               description='Point-LIO を起動するか'),
         DeclareLaunchArgument('rviz', default_value='true',
