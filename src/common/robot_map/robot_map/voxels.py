@@ -101,3 +101,65 @@ class VoxelMap:
                 os.unlink(tmp)
             raise
         return len(xyz)
+
+
+LABEL_FLOOR, LABEL_SLOPE, LABEL_OBSTACLE, LABEL_NONE = 0, 1, 2, 255
+
+
+class LabelMap:
+    """ボクセルごとの分類 (床・坂・障害物). obstacle_detector の /lidar_labeled から付ける.
+
+    * 1 回分の点群の中で同じボクセルの値がぶつかったら, 障害物 > 坂 > 床 を優先する
+    * 障害物は obstacle_min_hits 回見るまで確定しない (それまでは前の分類のまま. 初めてなら未分類)
+    * 床か坂として見えたら, そのボクセルの障害物の回数は 0 に戻す (どいた人や物を消す)
+    """
+
+    def __init__(self, size, obstacle_min_hits=2):
+        self.size = float(size)
+        self.obstacle_min_hits = obstacle_min_hits
+        self.keys = np.empty(0, np.int64)
+        self.labels = np.empty(0, np.uint8)
+        self.obs_hits = np.empty(0, np.uint8)
+        self.version = 0
+
+    def add(self, xyz, labels):
+        """map 座標の点 (N, 3) と分類 (N,) を足す."""
+        if not len(xyz):
+            return
+        keys = pack(np.floor(np.asarray(xyz, np.float64) / self.size))
+        order = np.lexsort((np.asarray(labels), keys))       # キーごとに分類の大きい順が最後に来る
+        keys, labels = keys[order], np.asarray(labels, np.uint8)[order]
+        last = np.r_[keys[1:] != keys[:-1], True]             # キーごとの最後 = 優先度の一番高い分類
+        keys, labels = keys[last], labels[last]
+
+        pos = np.searchsorted(self.keys, keys)
+        found = pos < len(self.keys)
+        found[found] = self.keys[pos[found]] == keys[found]
+        obstacle = labels == LABEL_OBSTACLE
+        # 既にあるもの
+        i = pos[found]
+        hits = np.where(obstacle[found], np.minimum(self.obs_hits[i].astype(np.int32) + 1, 255), 0)
+        self.obs_hits[i] = hits
+        free = ~obstacle[found]
+        self.labels[i[free]] = labels[found][free]
+        confirmed = obstacle[found] & (hits >= self.obstacle_min_hits)
+        self.labels[i[confirmed]] = LABEL_OBSTACLE
+        # 新しいもの
+        new = ~found
+        if new.any():
+            new_labels = np.where(obstacle[new] & (self.obstacle_min_hits > 1), LABEL_NONE, labels[new])
+            self.keys = np.insert(self.keys, pos[new], keys[new])
+            self.labels = np.insert(self.labels, pos[new], new_labels.astype(np.uint8))
+            self.obs_hits = np.insert(self.obs_hits, pos[new], obstacle[new].astype(np.uint8))
+        self.version += 1
+
+    def lookup(self, keys):
+        """keys (N,) int64 の分類. 無いものは LABEL_NONE."""
+        out = np.full(len(keys), LABEL_NONE, np.uint8)
+        if not len(self.keys):
+            return out
+        pos = np.searchsorted(self.keys, keys)
+        ok = pos < len(self.keys)
+        ok[ok] = self.keys[pos[ok]] == keys[ok]
+        out[ok] = self.labels[pos[ok]]
+        return out

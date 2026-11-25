@@ -111,6 +111,12 @@ nodes:
     voxel_max_range: 15.0         # 車体からこれより遠い点は貯めない [m]
     save_period: 60.0             # この秒数ごとと終了時に保存する (途中で落ちても失わないように)
     save_min_hits: 2              # 保存するのは, この数以上のスキャンで点が入ったボクセル (通った人などを除く)
+    # 3D 地図の配信 (スマホの 3D 表示). 色は obstacle_detector の分類 (labeled_out) から付ける
+    voxel_topic: /voxel_map       # 見えている範囲のボクセル (中心と分類). save_min_hits 以上見たものだけ
+    voxel_period: 1.0             # 配信の周期 [s]
+    visible_percentile: 95.0      # 見えている範囲 = 直近 visible_window 秒の点が届いた水平距離のこの % 点 (上限 voxel_max_range)
+    visible_window: 1.0
+    obstacle_min_hits: 2          # 障害物の色はこの回数見てから付ける (一瞬の誤検知を除く)
 
   # スマホから目的地を送る Web (robot_goal web). モード選択から起動したときのポートは launcher の mode_port
   robot_goal_web:

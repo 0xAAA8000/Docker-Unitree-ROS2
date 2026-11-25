@@ -172,7 +172,8 @@ class Config:
                               obstacle_max_height=detector.get('obstacle_max_height'),
                               # ボクセルは Point-LIO の地図の粗さに合わせる. 保存先は launcher と同じ
                               voxel_size=float(self._raw('point_lio').get('filter_size_map', 0.1)),
-                              save_dir=launcher.get('map_dir', '~/robot_maps')),
+                              save_dir=launcher.get('map_dir', '~/robot_maps'),
+                              labeled_topic=detector.get('labeled_out', '/lidar_labeled')),
             'cmd_vel_converter': dict(sim_time, port=arduino, cmd_vel_topic=cmd_vel,
                                       wheelbase=wheelbase),
             'robot_goal_web': dict(sim_time),

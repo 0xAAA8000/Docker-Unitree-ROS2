@@ -38,3 +38,20 @@ def test_save_drops_rare_voxels(tmp_path):
     xyz = read_pcd_xyz(str(path))
     assert len(xyz) == n > 0
     assert not np.any(np.all(np.abs(xyz - [1.05, 1.05, 0.55]) < 1e-6, axis=1))
+
+
+def test_labels_obstacle_needs_two_hits_and_free_resets():
+    from robot_map.voxels import LabelMap, LABEL_NONE
+    lab = LabelMap(0.1, obstacle_min_hits=2)
+    p = np.array([[0.05, 0.05, 0.05]])
+    k = pack(np.floor(p / 0.1))
+    lab.add(p, [2])
+    assert lab.lookup(k)[0] == LABEL_NONE        # 1 回目の障害物はまだ付けない
+    lab.add(p, [2])
+    assert lab.lookup(k)[0] == 2
+    lab.add(p, [1])                              # 坂として見えたら障害物の回数を戻す
+    assert lab.lookup(k)[0] == 1 and lab.obs_hits[0] == 0
+    q = np.array([[1.05, 0, 0], [1.06, 0.01, 0.01]])
+    lab.add(q, [0, 2])                           # 同じ回では障害物を優先 (1 回目なので未分類)
+    lab.add(q, [0, 2])
+    assert lab.lookup(pack(np.floor(q[:1] / 0.1)))[0] == 2
