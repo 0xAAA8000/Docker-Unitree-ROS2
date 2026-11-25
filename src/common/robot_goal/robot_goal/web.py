@@ -6,12 +6,16 @@
 同じ Wi-Fi のスマホで http://<このマシンの IP>:8080 を開く.
 地図は自分では作らず, robot_map が配信する /map を表示する.
 
-購読: /map (2D 地図), /plan (Nav2 の経路), TF (map -> base_link)
+購読: /map (2D 地図), /plan (Nav2 の経路), TF (map -> base_link),
+      /global_costmap/costmap, /local_costmap/costmap (Nav2 が見ている costmap. 画面で切り替える),
+      /voxel_map (robot_map の 3D 地図のうち見えている範囲. 画面の 3D 表示)
 送信: navigate_to_pose アクション (robot_goal goal と同じ)
 呼ぶ: costmap の障害物の消去 (画面の「障害物を消す」. 誤検知が残ったとき用)
 """
 import math
 import os
+
+import numpy as np
 import socket
 import threading
 import time
@@ -32,7 +36,9 @@ from rclpy.time import Time
 import tf2_ros
 
 from robot_goal.goal import quat_to_yaw, yaw_to_quat
+from robot_goal.voxel_store import VoxelStore
 from robot_goal.web_server import encode_png, known_bounds, make_server, occupancy_to_image
+from sensor_msgs.msg import PointCloud2
 
 RESULT = {
     GoalStatus.STATUS_SUCCEEDED: 'succeeded',
@@ -55,6 +61,10 @@ class WebGoal(Node):
         self.base_frame = p('base_frame', 'base_link').value
         map_topic = p('map_topic', '/map').value
         plan_topic = p('plan_topic', '/plan').value
+        costmap_topics = {'global': p('global_costmap_topic', '/global_costmap/costmap').value,
+                          'local': p('local_costmap_topic', '/local_costmap/costmap').value}
+        voxel_topic = p('voxel_topic', '/voxel_map').value
+        voxel_size = p('voxel_size', 0.1).value
 
         self.lock = threading.Lock()
         self.map = None            # (meta, png)
@@ -65,6 +75,9 @@ class WebGoal(Node):
         self.goal = {'status': 'idle'}
         self.goal_handle = None
         self.goal_seq = 0
+        self.costmaps = {name: None for name in costmap_topics}   # name -> {meta, data, png}
+        self.costmap_version = 0
+        self.voxels = VoxelStore(voxel_size)
 
         self.client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.clear_clients = [
@@ -78,6 +91,13 @@ class WebGoal(Node):
                              durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(OccupancyGrid, map_topic, self.on_map, map_qos)
         self.create_subscription(Path, plan_topic, self.on_plan, 1)
+        # costmap は volatile で受ける (Nav2 の publisher が transient_local でも受け取れる).
+        # 全体を毎回送らせるため Nav2 側は always_send_full_costmap: true (robot_config)
+        costmap_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
+        for name, topic in costmap_topics.items():
+            self.create_subscription(OccupancyGrid, topic,
+                                     lambda m, n=name: self.on_costmap(n, m), costmap_qos)
+        self.create_subscription(PointCloud2, voxel_topic, self.on_voxels, 1)
         self.create_timer(0.2, self.update_pose)
 
     # ---------- ROS 側 ----------
@@ -102,6 +122,35 @@ class WebGoal(Node):
             self.map = (meta, png)
             self.map_received = time.time()
 
+    def on_costmap(self, name, msg):
+        info = msg.info
+        if info.width == 0 or info.height == 0:
+            return
+        with self.lock:
+            self.costmap_version += 1
+            self.costmaps[name] = {
+                'meta': {'version': self.costmap_version, 'width': info.width,
+                         'height': info.height, 'resolution': info.resolution,
+                         'origin_x': info.origin.position.x, 'origin_y': info.origin.position.y,
+                         'known': None},
+                'data': bytes(msg.data),
+                'png': None,                   # 求められたときに作る (見ていない方は作らない)
+                'received': time.time(),
+            }
+
+    def on_voxels(self, msg):
+        names = {f.name: f for f in msg.fields}
+        n = msg.width * msg.height
+        if not all(k in names for k in ('x', 'y', 'z', 'label')):
+            return
+        dtype = np.dtype({'names': ['x', 'y', 'z', 'label'], 'formats': ['<f4', '<f4', '<f4', 'u1'],
+                          'offsets': [names[k].offset for k in ('x', 'y', 'z', 'label')],
+                          'itemsize': msg.point_step})
+        pts = np.frombuffer(bytes(msg.data), dtype=dtype, count=n)
+        centers = np.column_stack([pts['x'], pts['y'], pts['z']])
+        with self.lock:
+            self.voxels.update(centers, pts['label'])
+
     def on_plan(self, msg):
         pts = [(ps.pose.position.x, ps.pose.position.y) for ps in msg.poses]
         if len(pts) > MAX_PLAN_POINTS:
@@ -117,7 +166,7 @@ class WebGoal(Node):
             return
         p = t.transform.translation
         with self.lock:
-            self.pose = (p.x, p.y, quat_to_yaw(t.transform.rotation), time.time())
+            self.pose = (p.x, p.y, quat_to_yaw(t.transform.rotation), time.time(), p.z)
 
     def _set_goal(self, seq, **kw):
         """古いゴールのコールバックが新しいゴールの表示を上書きしないよう seq で確かめる."""
@@ -162,16 +211,35 @@ class WebGoal(Node):
                 'nav2': self.client.server_is_ready(),
                 'frame': self.frame,
                 'launcher_port': self.launcher_port,
+                'costmaps': {name: (dict(c['meta'], age=round(now - c['received'], 1)) if c else None)
+                             for name, c in self.costmaps.items()},
+                'voxels': {'version': self.voxels.version, 'count': self.voxels.count(),
+                           'size': self.voxels.size},
             }
             if self.pose:
-                x, y, yaw, t = self.pose
-                state['pose'] = {'x': round(x, 3), 'y': round(y, 3), 'yaw': round(yaw, 4),
-                                 'age': round(now - t, 1)}
+                x, y, yaw, t, z = self.pose
+                state['pose'] = {'x': round(x, 3), 'y': round(y, 3), 'z': round(z, 3),
+                                 'yaw': round(yaw, 4), 'age': round(now - t, 1)}
         return state
 
     def get_map(self):
         with self.lock:
             return self.map
+
+    def get_costmap(self, name):
+        """(meta, png) か None. PNG は版ごとに 1 回だけ作る."""
+        with self.lock:
+            c = self.costmaps.get(name)
+            if c is None:
+                return None
+            if c['png'] is None:
+                m = c['meta']
+                c['png'] = encode_png(occupancy_to_image(c['data'], m['width'], m['height']))
+            return c['meta'], c['png']
+
+    def get_voxels(self, since):
+        with self.lock:
+            return self.voxels.payload(since)
 
     def send_goal(self, x, y, yaw):
         if not self.client.server_is_ready():
@@ -246,7 +314,8 @@ def main():
     with open(html_path, 'rb') as f:
         html = f.read()
     try:
-        server = make_server(node.host, node.port, node, html, node.token)
+        server = make_server(node.host, node.port, node, html, node.token,
+                             static_dir=os.path.join(os.path.dirname(html_path), 'vendor'))
     except OSError as e:
         node.get_logger().error(f'ポート {node.port} を開けない: {e}')
         node.destroy_node()

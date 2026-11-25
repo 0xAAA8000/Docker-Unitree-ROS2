@@ -126,6 +126,9 @@ nodes:
     base_frame: base_link
     map_topic: /map
     plan_topic: /plan
+    # 画面で切り替えて表示する Nav2 の costmap (Nav2 は always_send_full_costmap: true で毎回全体を送る)
+    global_costmap_topic: /global_costmap/costmap
+    local_costmap_topic: /local_costmap/costmap
 
   # 一括起動 (robot_bringup の robot.launch.py)
   bringup:
@@ -196,6 +199,7 @@ nodes:
     local_costmap:
       local_costmap:
         ros__parameters:
+          always_send_full_costmap: true   # 毎回全体を配信する (スマホの画面に出すため. 差分の組み立てを省く)
           update_frequency: 5.0
           publish_frequency: 2.0
           global_frame: map
@@ -230,6 +234,7 @@ nodes:
     global_costmap:
       global_costmap:
         ros__parameters:
+          always_send_full_costmap: true   # 毎回全体を配信する (スマホの画面に出すため. 差分の組み立てを省く)
           update_frequency: 1.0
           publish_frequency: 1.0
           global_frame: map

@@ -176,7 +176,10 @@ class Config:
                               labeled_topic=detector.get('labeled_out', '/lidar_labeled')),
             'cmd_vel_converter': dict(sim_time, port=arduino, cmd_vel_topic=cmd_vel,
                                       wheelbase=wheelbase),
-            'robot_goal_web': dict(sim_time),
+            # 3D 表示のボクセルは robot_map と同じ大きさ・トピック
+            'robot_goal_web': dict(sim_time,
+                                   voxel_size=float(self._raw('point_lio').get('filter_size_map', 0.1)),
+                                   voxel_topic=self._raw('robot_map').get('voxel_topic', '/voxel_map')),
             'launcher': {},
             'calib_web': {
                 'port': launcher.get('mode_port', 8081),

@@ -3,14 +3,20 @@
 GET  /              地図画面 (web/index.html)
 GET  /api/state     現在地, 経路, ゴールの状態などの JSON
 GET  /api/map.png   2D 地図の画像. 大きさと原点は X-Map-* ヘッダで返す
+GET  /api/costmap.png?name=global|local   Nav2 の costmap の画像 (ヘッダは map.png と同じ)
+GET  /api/voxels?since=<版>   3D 表示のボクセル (voxel_store.py の形式. 対応していれば gzip)
+GET  /static/<ファイル>        web/vendor の JavaScript (Three.js など. スマホがネットにつながらなくても使えるよう同梱)
 POST /api/goal      {"x": .., "y": .., "yaw": rad または null} を map 座標で
 POST /api/cancel    走行中のゴールを取り消す
 
 token を設定すると /api/* は ?key=<token> が無いと 403 を返す.
 backend は get_state(), get_map() -> (meta dict, png bytes) | None,
+get_costmap(name) -> (meta, png) | None, get_voxels(since) -> bytes,
 send_goal(x, y, yaw) -> (ok, message), cancel() -> (ok, message) を持つもの.
 """
+import gzip
 import hmac
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
@@ -83,8 +89,19 @@ def encode_png(img, palette=PALETTE):
             + chunk(b'IDAT', zlib.compress(raw.tobytes(), 6)) + chunk(b'IEND', b''))
 
 
-def make_server(host, port, backend, index_html, token=''):
+_STATIC_TYPES = {'.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+                 '.txt': 'text/plain; charset=utf-8'}
+
+
+def make_server(host, port, backend, index_html, token='', static_dir=None):
     """ThreadingHTTPServer を作る (serve_forever() は呼び出し側で)."""
+    static = {}
+    if static_dir and os.path.isdir(static_dir):
+        for name in os.listdir(static_dir):
+            ext = os.path.splitext(name)[1]
+            if ext in _STATIC_TYPES:
+                with open(os.path.join(static_dir, name), 'rb') as f:
+                    static[name] = (f.read(), _STATIC_TYPES[ext])
 
     class Handler(BaseHTTPRequestHandler):
         server_version = 'robot_goal_web'
@@ -118,6 +135,18 @@ def make_server(host, port, backend, index_html, token=''):
             if url.path in ('/', '/index.html'):
                 self._send(200, index_html, 'text/html; charset=utf-8')
                 return
+            if url.path.startswith('/static/'):
+                item = static.get(url.path[len('/static/'):])   # 置いてあるファイル名だけ (パスは使わない)
+                if item is None:
+                    self._json(404, {'error': 'not found'})
+                else:
+                    self.send_response(200)
+                    self.send_header('Content-Type', item[1])
+                    self.send_header('Content-Length', str(len(item[0])))
+                    self.send_header('Cache-Control', 'max-age=86400')
+                    self.end_headers()
+                    self.wfile.write(item[0])
+                return
             if not url.path.startswith('/api/'):
                 self._json(404, {'error': 'not found'})
                 return
@@ -131,18 +160,38 @@ def make_server(host, port, backend, index_html, token=''):
                 if m is None:
                     self._json(404, {'error': '地図がまだ届いていない'})
                     return
-                meta, png = m
-                self._send(200, png, 'image/png', {
-                    'X-Map-Version': str(meta['version']),
-                    'X-Map-Width': str(meta['width']),
-                    'X-Map-Height': str(meta['height']),
-                    'X-Map-Resolution': repr(meta['resolution']),
-                    'X-Map-Origin-X': repr(meta['origin_x']),
-                    'X-Map-Origin-Y': repr(meta['origin_y']),
-                    'X-Map-Known': ','.join(repr(v) for v in meta['known'] or []),
-                })
+                self._send_grid(*m)
+            elif url.path == '/api/costmap.png':
+                name = parse_qs(url.query).get('name', ['global'])[0]
+                m = backend.get_costmap(name)
+                if m is None:
+                    self._json(404, {'error': f'{name} の costmap がまだ届いていない'})
+                    return
+                self._send_grid(*m)
+            elif url.path == '/api/voxels':
+                try:
+                    since = int(parse_qs(url.query).get('since', ['0'])[0])
+                except ValueError:
+                    since = 0
+                body = backend.get_voxels(since)
+                headers = {}
+                if 'gzip' in self.headers.get('Accept-Encoding', ''):
+                    body = gzip.compress(body, compresslevel=5)
+                    headers['Content-Encoding'] = 'gzip'
+                self._send(200, body, 'application/octet-stream', headers)
             else:
                 self._json(404, {'error': 'not found'})
+
+        def _send_grid(self, meta, png):
+            self._send(200, png, 'image/png', {
+                'X-Map-Version': str(meta['version']),
+                'X-Map-Width': str(meta['width']),
+                'X-Map-Height': str(meta['height']),
+                'X-Map-Resolution': repr(meta['resolution']),
+                'X-Map-Origin-X': repr(meta['origin_x']),
+                'X-Map-Origin-Y': repr(meta['origin_y']),
+                'X-Map-Known': ','.join(repr(v) for v in meta['known'] or []),
+            })
 
         def do_POST(self):
             url = urlparse(self.path)
