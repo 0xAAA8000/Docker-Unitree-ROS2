@@ -63,7 +63,7 @@ Docker イメージ (sim 含む) は[最後の節](#docker-で動かす-任意)�
 
 | 場所 | 取り込み元 | コミット | こちらの変更 |
 | --- | --- | --- | --- |
-| `src/common/point_lio_ros2` | [dfloreaa/point_lio_ros2](https://github.com/dfloreaa/point_lio_ros2) | `a8e2d0d` | `patches/point_lio_ros2.patch` (ZUPT、L1 の設定、`use_sim_time` 引数、RViz の設定) |
+| `src/common/point_lio_ros2` | [dfloreaa/point_lio_ros2](https://github.com/dfloreaa/point_lio_ros2) | `a8e2d0d` | `patches/point_lio_ros2.patch` (ZUPT、`use_sim_time` 引数、RViz の設定) |
 | `src/l1/unilidar_sdk` | [unitreerobotics/unilidar_sdk](https://github.com/unitreerobotics/unilidar_sdk) | `1bd7d95` (v1.0.16) | なし |
 | `src/l2/unilidar_sdk2` | [unitreerobotics/unilidar_sdk2](https://github.com/unitreerobotics/unilidar_sdk2) | `0e3c51f` (v2.0.10) | `patches/unilidar_sdk2.patch` (ドライバの launch に接続方式の引数) |
 | `src/l2/lidar_localization_ros2` | [rsasaki0109/lidar_localization_ros2](https://github.com/rsasaki0109/lidar_localization_ros2) | `cd5e27a` | なし |
@@ -437,8 +437,9 @@ L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
 * TF: `camera_init` → `aft_mapped`
   (`odom_header_frame_id` / `odom_child_frame_id` パラメータで変更可能)
 
-パラメータは `src/common/point_lio_ros2/config/*.yaml` にあります。`real.launch.py` で起動したときは、
-これに `robot_config` の `nodes.point_lio` を重ねます。
+パラメータは `src/common/point_lio_ros2/config/*.yaml` (取り込み元のまま) にあります。`real.launch.py` で起動したときは、
+これに `robot_config` の `nodes.point_lio` を重ねます。この節の `mapping_unilidar_*.launch.py` で起動すると
+`robot_config` の値 (`fov_degree: 360` や `init_map_size: 1000` など) は入らないので、実機の動きを確かめるときは `real.launch.py` を使います。
 
 動作確認や、うまく動かないときの切り分けは
 [ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md#14-トラブルシュート早見表)
@@ -458,9 +459,12 @@ Unitree 公式の [unitreerobotics/point_lio_unilidar](https://github.com/unitre
 `patches/point_lio_ros2.patch` で次の変更を当てています。
 
 1. ZUPT (止まっている間は速度 0 を観測として入れる。`zupt.enable` / `zupt.topic` / `zupt.vel_cov` / `zupt.timeout`)
-2. `config/unilidar_l1.yaml` の調整 (変更前の控えが `unilidar_l1.yaml.bak`)
-3. `mapping_unilidar_l1.launch.py` / `mapping_unilidar_l2.launch.py` に `use_sim_time` 引数 (Gazebo / bag 再生用)
-4. RViz の表示設定
+2. `mapping_unilidar_l1.launch.py` / `mapping_unilidar_l2.launch.py` に `use_sim_time` 引数 (Gazebo / bag 再生用)
+3. RViz の表示設定
+
+設定 (`config/unilidar_<l1|l2>.yaml`) は取り込み元のままで、こちらで変えた値は `robot_config` に置いています
+(`common.yaml` の `nodes.point_lio` と、実機の `robots/rc_car.yaml` の `fov_degree: 360`・`publish_odometry_without_downsample: false` など)。
+`real.launch.py` で起動するとこれらが重なります。
 
 上流の `image/` (README 用のデモ GIF、約 246 MB) と、実体のないサブモジュール定義の `.gitmodules` は取りません
 (`include/IKFoM` と `include/ikd-Tree` は上流でも実ファイルとしてコミット済み)。

@@ -34,6 +34,13 @@ nodes:
     # 0.30 だと車体の前 0.17 m, 横 0.26 m 以内の障害物が見えなかった
     obstacle_range_min: 0.08
 
+  # Point-LIO (機種ごとの設定 point_lio_ros2/config/unilidar_l1.yaml に重ねる)
+  point_lio:
+    mapping:
+      fov_degree: 360.0           # L1 は全周を測る (取り込み元の設定は 180)
+    odometry:
+      publish_odometry_without_downsample: false   # 間引いた点で補正し終えたときだけ自己位置を出す (取り込み元は true)
+
   cmd_vel_converter:
     baud: 115200
     # --- 以下はキャリブレーション前の仮の値。キャリブレーションの結果 (summary.yaml) が上書きする ---

@@ -41,16 +41,44 @@ wanted() {
 }
 
 apply_patch() {
-    local path=$1 patch=$2
-    if git -C "$path" apply --whitespace=nowarn --check "$patch" 2>/dev/null; then
+    # サブモジュールを「取り込み元 + 今の版のパッチ」の状態にする.
+    # 今の版か過去の版 (git の履歴) のどれかが当たったままなら, その版を外して取り込み元に戻してから今の版を当てる.
+    # どの版を外しても取り込み元に戻らない (手で変えたファイルがある) ときは, 何も変えずにエラーにする
+    local path=$1 patch=$2 rel=${2#"$REPO"/}
+    local dir cand commit found='' n=0
+    dir=$(mktemp -d)
+    cp "$patch" "$dir/0.patch"
+    for commit in $(git -C "$REPO" log --format=%H -- "$rel"); do
+        n=$((n + 1))
+        git -C "$REPO" show "$commit:$rel" > "$dir/$n.patch" 2>/dev/null || rm -f "$dir/$n.patch"
+    done
+    for cand in $(ls "$dir" | sort -n); do
+        cand="$dir/$cand"
+        git -C "$path" apply --whitespace=nowarn --reverse --check "$cand" 2>/dev/null || continue
+        git -C "$path" apply --whitespace=nowarn --reverse "$cand"
+        if [[ -z "$(git -C "$path" status --porcelain --untracked-files=no)" ]]; then
+            found=$cand
+            break
+        fi
+        git -C "$path" apply --whitespace=nowarn "$cand"     # 違う版だったので元に戻す
+    done
+    if [[ -n "$found" ]] && cmp -s "$found" "$patch"; then
         git -C "$path" apply --whitespace=nowarn "$patch"
-        echo "  パッチを当てた: ${patch#"$REPO"/}"
-    elif git -C "$path" apply --whitespace=nowarn --reverse --check "$patch" 2>/dev/null; then
-        echo "  パッチは当たっている: ${patch#"$REPO"/}"
+        echo "  パッチは当たっている: $rel"
+    elif git -C "$path" apply --whitespace=nowarn --check "$patch" 2>/dev/null; then
+        git -C "$path" apply --whitespace=nowarn "$patch"
+        if [[ -n "$found" ]]; then
+            echo "  前の版のパッチを外して, 今の版を当てた: $rel"
+        else
+            echo "  パッチを当てた: $rel"
+        fi
     else
-        echo "エラー: ${patch#"$REPO"/} を $path に当てられない (手で変えたファイルとぶつかっている?)" >&2
+        [[ -n "$found" ]] && git -C "$path" apply --whitespace=nowarn "$found"   # 外した版を戻す
+        rm -rf "$dir"
+        echo "エラー: $rel を $path に当てられない (手で変えたファイルとぶつかっている?)" >&2
         return 1
     fi
+    rm -rf "$dir"
 }
 
 git config -f .gitmodules --get-regexp '^submodule\..*\.path$' | while read -r _ path; do
