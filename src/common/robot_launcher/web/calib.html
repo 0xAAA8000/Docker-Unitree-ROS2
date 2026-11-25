@@ -131,7 +131,7 @@ pre { margin: 0; max-height: 300px; overflow: auto; font-size: 11px; line-height
     const box = $('runs'); box.innerHTML = '';
     $('selNote').textContent = st.selected
       ? `使う計測結果: ${runTitle(st.selected)} (目的地設定の自走を起動し直すと反映されます)`
-      : '使う計測結果は選ばれていません (変換ノードは operation.yaml の仮の値を使います)';
+      : '使う計測結果は選ばれていません (変換ノードはロボットの設定の仮の値を使います)';
     if (!st.runs.length) { box.textContent = `${st.calib_dir} に計測結果はまだありません`; return; }
     for (const r of st.runs) {
       const div = document.createElement('div');

@@ -7,6 +7,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from robot_config import load as load_config
+
 def generate_launch_description():
     # 1. パッケージやファイルのパス設定
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
@@ -44,11 +46,13 @@ def generate_launch_description():
         output='screen'
     )
 
+    # 設定は robot_config の sim (src/common/robot_config/config/robots/sim.yaml) から配る
+    cfg = load_config('sim')
     filter_invalid_points = Node(
         package='sim_gazebo',
         executable='filter_invalid_points',
         name='filter_invalid_points',
-        parameters=[{'use_sim_time': True}],
+        parameters=[cfg.node('filter_invalid_points')],
         output='screen'
     )
 
@@ -57,8 +61,7 @@ def generate_launch_description():
         package='obstacle_detector',
         executable='obstacle_detector',
         name='obstacle_detector',
-        parameters=[os.path.join(pkg_sim_gazebo, 'config', 'obstacle_detector.yaml'),
-                    {'use_sim_time': True}],
+        parameters=[cfg.node('obstacle_detector')],
         output='screen'
     )
 

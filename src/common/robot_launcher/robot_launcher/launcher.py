@@ -12,6 +12,9 @@
     <日時>_<モード>.pcd として移す (次のモードで上書きされないように)
   * キャリブレーションのモードで選んだ計測結果 (calib_dir/selected) を, 目的地設定のモードの
     calibration_file に渡す
+  * パラメータの既定値は robot_config (nodes.launcher) から読む (systemd から ros2 launch を挟まずに
+    起動するため, launch ではなくこのノードが自分で読む). --ros-args -p で上書きできる.
+    ロボットは -p robot:=<名前> か環境変数 ROBOT_NAME (無ければ rc_car). 各モードにも robot:= で渡す
 """
 import os
 import shlex
@@ -28,6 +31,8 @@ from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+
+from robot_config import default_robot, load as load_config
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import PointCloud2
@@ -91,13 +96,17 @@ class Launcher(Node):
 
     def __init__(self):
         super().__init__('robot_launcher')
-        p = self.declare_parameter
+        self.robot = self.declare_parameter('robot', default_robot()).value or default_robot()
+        cfg = load_config(self.robot).node('launcher')     # 既定値 (robot_config)
+
+        def p(name, default):
+            return self.declare_parameter(name, cfg.get(name, default))
         self.host = p('host', '0.0.0.0').value
         self.port = p('port', 8080).value
         self.mode_port = p('mode_port', 8081).value
         self.token = p('token', '').value
         self.launch_args = p('launch_args', '').value       # 全モードの ros2 launch に足す引数
-        self.arduino_port = p('arduino_port', '/dev/ttyACM0').value
+        self.arduino_port = p('arduino_port', '').value     # 空ならロボットの設定の値 (各モードが読む)
         self.calib_dir = os.path.expanduser(p('calib_dir', '~/drive_calib').value)
         self.log_dir = os.path.expanduser(p('log_dir', '~/robot_logs').value)
         self.map_dir = os.path.expanduser(p('map_dir', '~/robot_maps').value)
@@ -177,7 +186,9 @@ class Launcher(Node):
     def command(self, mode):
         if self.command_override.get(mode):
             return shlex.split(self.command_override[mode])
-        common = [f'arduino_port:={self.arduino_port}', f'launcher_port:={self.port}']
+        common = [f'robot:={self.robot}', f'launcher_port:={self.port}']
+        if self.arduino_port:
+            common.append(f'arduino_port:={self.arduino_port}')
         if mode == 'goal':
             cmd = ['ros2', 'launch', 'robot_bringup', 'robot.launch.py',
                    f'web_port:={self.mode_port}'] + common

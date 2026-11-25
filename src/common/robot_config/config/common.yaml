@@ -1,0 +1,275 @@
+# ロボットに依らない設定. ロボットごとの設定は robots/<名前>.yaml (同じ書き方で上書きできる).
+# 各ノードに渡る値 = この nodes.<ノード> + ロボットの事実から計算した値 + robots/<名前>.yaml の nodes.<ノード>
+# (後のものほど優先. 計算する値の一覧は robot_config/config.py の Config.derived).
+# 実際に渡る値の確認: ros2 run robot_config show <ノード> [--robot <名前>]
+# yaml を書き換えたら, ビルドし直さずに次の起動から反映される (--symlink-install のとき).
+nodes:
+  # ---------- LiDAR まわり ----------
+  # LiDAR ドライバのトピックを Point-LIO と障害物の検知に配る (lidar_bridge)
+  lidar_bridge:
+    cloud_in: /unilidar/cloud
+    imu_in: /unilidar/imu
+    cloud_out: /lidar
+    full_out: /lidar_full         # frame_id を付け替えただけの点群 (obstacle_detector 用)
+    imu_out: /imu
+    lidar_frame: lidar_link
+    imu_frame: imu_link
+    # IMU 加速度のローパスのカットオフ [Hz]。0 で無効。LiDAR 回転による振動の除去用
+    imu_acc_lpf_hz: 0.0    # 有効にする場合の目安: 20.0
+    # 点群がこの時間 [s] 以上届かなければ, その場で回転だけしている (回転はジャイロのとおり,
+    # 平行移動はしない) とみなして Point-LIO への点群と IMU の加速度を補完する。
+    # IMU が届かないときは静止として補完する。途切れ後に自己位置が飛んで流れ続けるのを防ぐ。0 で無効
+    gap_fill_timeout: 0.0  # 有効にする場合の目安: 0.3
+    # 近すぎる点は Point-LIO が捨てる (point_lio_ros2/config/unilidar_l1.yaml の preprocess.blind: 0.5)
+
+  # Nav2 の障害物とクリア用の点群を作る (obstacle_detector). 地面の高さ・自車体の箱・取付はロボットの事実から
+  obstacle_detector:
+    cloud_in: /lidar_full
+    obstacles_out: /lidar_obstacles
+    clear_out: /lidar_clear
+    slope_out: /lidar_slope       # 坂として障害物から外した点 (rviz での確認用)
+    # Nav2 のクリア用に床の点を LiDAR から水平方向にずらす距離 [m] (0 で無効).
+    # 床が見えているセルに残った誤検知の障害物を消す. costmap の 1 セル (0.05 m) より大きくする
+    ground_clear_extend: 0.10
+    # 坂の判定. 高さで障害物になった点のうち, 床から緩い傾きでつながっている所 (坂) を障害物から外す。
+    # 箱や台は上面が平らでも縁で高さが跳ぶので障害物のまま。詳しくは obstacle_detector.py の先頭
+    slope_filter: true
+    slope_max_deg: 15.0           # これより急な傾きは障害物
+    step_max: 0.06                # 隣のマスとの高さの差の上限 [m] (坂の 1 マス分 0.04 + ばらつき)
+    slope_cell: 0.15              # 高さを求めるマス [m]。L1 の点はまばらなので 0.10 より 0.15 のほうが坂を判定できる
+    slope_range: 4.0              # 判定する範囲 (車体の中心から前後左右) [m]。外は高さだけで判定
+    slope_min_points: 3           # 床以外のマスで判定に使う最小の点数 (まばらな壁を坂と誤らない)
+
+  # /cmd_vel と IMU から停止を判定し, Point-LIO の ZUPT に渡す (stationary_detector)
+  stationary_detector:
+    stationary_topic: /stationary
+    settle_time: 1.0              # 走る指令が止んでから待つ時間 [s]
+    min_speed: 0.02               # これ未満の速度指令は「止まれ」 [m/s]
+    min_turn: 0.05                # これ未満の角速度指令は「止まれ」 [rad/s]
+    window: 0.5                   # IMU を見る時間 [s]
+    gyro_max: 0.15                # 角速度の大きさの上限 [rad/s]
+    acc_std_max: 0.5              # 加速度の大きさの標準偏差の上限 [m/s^2]
+    rate: 20.0
+
+  # Point-LIO. 機種ごとの設定 (point_lio_ros2/config/unilidar_<l1|l2>.yaml) にこの値を重ねる
+  point_lio:
+    use_imu_as_input: false
+    prop_at_freq_of_imu: true
+    check_satu: true
+    # mapping_unilidar_l1/l2.launch.py は 10. 少ない点で最初の地図を作ると
+    # 静止中もドリフトしやすいので増やす (hku-mars/Point-LIO issue #86)
+    init_map_size: 1000
+    point_filter_num: 1
+    space_down_sample: true
+    filter_size_surf: 0.1
+    filter_size_map: 0.1
+    cube_side_length: 1000.0
+    runtime_pos_log_enable: false
+    mapping:
+      # IMU の信用度. 大きくすると振動には強くなるが, 手で回転させた試験 (点群の途切れなし)
+      # では回転中にずれるようになったので, 小さい値 (IMU を信用する) にしている
+      imu_meas_acc_cov: 0.1       # IMU 加速度の観測分散 (大きいほど IMU を信用しない)
+      acc_cov_output: 1000.0      # 加速度のプロセスノイズ (小さいほど加速度の推定が滑らか)
+      imu_meas_omg_cov: 0.1       # IMU 角速度の観測分散
+      gyr_cov_output: 1000.0      # 角速度のプロセスノイズ
+    zupt:
+      topic: /stationary          # 止まっている間は速度 = 0 を観測として入れる (stationary_detector の出力)
+
+  # L1 のドライバ (unitree_lidar_ros2_node). ポートはロボットの事実から
+  unitree_lidar_l1:
+    rotate_yaw_bias: 0.0
+    range_scale: 0.001
+    range_bias: 0.0
+    range_max: 50.0
+    range_min: 0.0
+    cloud_frame: unilidar_lidar
+    cloud_topic: unilidar/cloud
+    cloud_scan_num: 18
+    imu_frame: unilidar_imu
+    imu_topic: unilidar/imu
+
+  # ---------- 地図・目的地・起動 ----------
+  # Point-LIO の点群からスマホ表示用の 2D 地図を作る (robot_map). 床・障害物の高さは obstacle_detector と同じ
+  robot_map:
+    cloud_topic: /cloud_registered
+    map_topic: /map
+    map_frame: map
+    base_frame: base_link
+    resolution: 0.05              # 地図の 1 セル [m]
+    floor_tolerance: 0.05         # 床から ± この範囲の点を床とする [m]
+    max_range: 15.0               # ロボットからこれより遠い点は使わない [m]
+    publish_period: 1.0
+    chunk: 10.0
+    occupied_min_hits: 3          # 障害物の点がこの回数以上で…
+    occupied_ratio: 0.5           # …床の点のこの割合以上なら占有
+
+  # スマホから目的地を送る Web (robot_goal web). モード選択から起動したときのポートは launcher の mode_port
+  robot_goal_web:
+    host: 0.0.0.0
+    port: 8080
+    frame: map
+    base_frame: base_link
+    map_topic: /map
+    plan_topic: /plan
+
+  # 一括起動 (robot_bringup の robot.launch.py)
+  bringup:
+    nav_delay: 5.0                # Point-LIO の起動から Nav2 を起動するまでの秒数 (TF が出始めるのを待つ)
+
+  # Nav2 の起動 (robot_navigation の navigation.launch.py)
+  navigation:
+    publish_base_tf: false        # aft_mapped -> base_link の静的 TF を出すか (実機は lidar_bridge の launch が出す)
+    autostart: true
+
+  # モード選択の画面 (robot_launcher launcher)
+  launcher:
+    host: 0.0.0.0
+    port: 8080
+    mode_port: 8081               # 各モードの画面のポート
+    calib_dir: ~/drive_calib      # キャリブレーションの計測結果
+    log_dir: ~/robot_logs         # モードごとの出力
+    map_dir: ~/robot_maps         # モードを止めるたびに Point-LIO の地図を移す先
+    start_timeout: 90.0           # モードの起動を待つ上限 [s]
+    stop_timeout: 30.0            # モードの停止を待つ上限 [s]
+    cloud_topic: /unilidar/cloud  # 起動の段階の判定に使うトピック
+    odom_topic: /aft_mapped_to_init
+    nav2_state_service: /bt_navigator/get_state
+
+  # キャリブレーションの画面 (robot_launcher calib_web). 初期値のホイールベースなどはロボットの事実から
+  calib_web:
+    host: 0.0.0.0
+    deadman: 5.0                  # 計測中に画面からの問い合わせがこの秒数途切れたら中止
+    command: ros2 run robot_operation calibrate_drive
+
+  # Nav2 の速度指令を Arduino に送る (robot_operation cmd_vel_converter). 車体ごとの値は robots/<名前>.yaml
+  cmd_vel_converter:
+    rate: 20.0                    # 指令の送信周期 [Hz]
+    cmd_timeout: 0.5              # Twist がこの時間来なければ停止 [s]
+    min_speed: 0.02               # これ未満の速度指令は停止 [m/s]
+
+  # ---------- Nav2 ----------
+  # nav2_bringup に渡すパラメータ. footprint と use_sim_time はロボットの事実から入る
+  nav2:
+    controller_server:
+      ros__parameters:
+        use_sim_time: true
+        use_stamped_vel: false    # 2026/10/04: true->false    # 重要: /cmd_vel を Twist ではなく TwistStamped で出力する設定
+        controller_frequency: 20.0
+        min_x_velocity_threshold: 0.001
+        min_y_velocity_threshold: 0.5
+        min_theta_velocity_threshold: 0.001
+        failure_tolerance: 0.3
+        progress_checker_plugin: "progress_checker"
+        goal_checker_plugins: ["general_goal_checker"]
+        controller_plugins: ["FollowPath"]
+        progress_checker:
+          plugin: "nav2_controller::SimpleProgressChecker"
+          movement_time_allowance: 10.0
+        general_goal_checker: # ゴール判定
+          stateful: true
+          plugin: "nav2_controller::SimpleGoalChecker"
+          yaw_goal_tolerance: 1.0 # 向き[rad] 1rad~=60deg
+        # アッカーマン車両用コントローラ設定
+        FollowPath:
+          plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController" # RPP
+          use_velocity_scaled_lookahead_dist: false
+          use_regulated_linear_velocity_scaling: true
+          regulated_linear_scaling_min_speed: 0.15
+          use_rotate_to_heading: false
+          allow_reversing: true
+          use_costmap_heading: false
+    local_costmap:
+      local_costmap:
+        ros__parameters:
+          update_frequency: 5.0
+          publish_frequency: 2.0
+          global_frame: map
+          robot_base_frame: base_link
+          use_sim_time: true
+          rolling_window: true
+          track_unknown_space: false    # 経路追従 (RPP) は未知のセルを衝突とみなすので, local では未知を空きとして扱う
+          plugins: ["obstacle_layer", "inflation_layer"]
+          obstacle_layer:
+            plugin: "nav2_costmap_2d::ObstacleLayer"
+            enabled: true
+            max_obstacle_height: 100.0       # レイヤー全体の上限（既定 2.0）。map の z で切られないように大きくする
+            observation_sources: obstacles ground_clear
+            obstacles:                       # 障害物の判定：地面除去済みの点
+              topic: /lidar_obstacles
+              data_type: "PointCloud2"
+              marking: true
+              clearing: false
+              min_obstacle_height: -100.0    # 高さはセンサー座標系で判定済みなので、ここでは制限しない
+              max_obstacle_height: 100.0     # ※観測ごとの既定値は 0.0。必ず指定する
+              obstacle_max_range: 20.0
+            ground_clear:                    # 空きセルのクリア：地面を含む全点へレイを飛ばす
+              topic: /lidar_clear            # obstacle_detector が床の点を少し奥へずらしたもの (床の上の誤検知も消える)
+              data_type: "PointCloud2"
+              marking: false
+              clearing: true
+              min_obstacle_height: -100.0
+              max_obstacle_height: 100.0
+              raytrace_max_range: 25.0
+          inflation_layer:
+            plugin: "nav2_costmap_2d::InflationLayer"
+    global_costmap:
+      global_costmap:
+        ros__parameters:
+          update_frequency: 1.0
+          publish_frequency: 1.0
+          global_frame: map
+          robot_base_frame: base_link
+          use_sim_time: true
+          rolling_window: true      # ← 追加（車両中心に追従）
+          plugins: ["obstacle_layer", "inflation_layer"]
+          obstacle_layer:
+            plugin: "nav2_costmap_2d::ObstacleLayer"
+            enabled: true
+            max_obstacle_height: 100.0       # レイヤー全体の上限（既定 2.0）。map の z で切られないように大きくする
+            observation_sources: obstacles ground_clear
+            obstacles:                       # 障害物の判定：地面除去済みの点
+              topic: /lidar_obstacles
+              data_type: "PointCloud2"
+              marking: true
+              clearing: false
+              min_obstacle_height: -100.0    # 高さはセンサー座標系で判定済みなので、ここでは制限しない
+              max_obstacle_height: 100.0     # ※観測ごとの既定値は 0.0。必ず指定する
+              obstacle_max_range: 20.0
+            ground_clear:                    # 空きセルのクリア：地面を含む全点へレイを飛ばす
+              topic: /lidar_clear            # obstacle_detector が床の点を少し奥へずらしたもの (床の上の誤検知も消える)
+              data_type: "PointCloud2"
+              marking: false
+              clearing: true
+              min_obstacle_height: -100.0
+              max_obstacle_height: 100.0
+              raytrace_max_range: 25.0
+          inflation_layer:
+            plugin: "nav2_costmap_2d::InflationLayer"
+    bt_navigator: # BT: 行動ツリー
+      ros__parameters:
+        use_sim_time: true
+        global_frame: map
+        robot_base_frame: base_link
+        odom_topic: /aft_mapped_to_init    # 2026/10/04: /Odometry->/aft_mapped_to_init
+        default_nav_to_pose_bt_xml: ""    # navigation.launch.py が robot_navigation の behavior_trees/navigate_keep_path.xml にする
+    planner_server:
+      ros__parameters:
+        use_sim_time: true
+        planner_plugins: ["GridBased"]
+        GridBased:
+          plugin: "nav2_smac_planner/SmacPlannerHybrid"
+          motion_model_for_search: "REEDS_SHEPP"    # 前進のみ # 2026/10/05: "DUBIN"->"REEDS_SHEPP": RPPで後進を許可してるので、それに合わせる
+          allow_unknown: true           # 未知も通れるが, 重さ 255 (障害物のすぐ横と同じ) として扱う.
+                                        # cost_penalty 3.0 では未知を 1 m 進むのが空きの約 4 m 分のコストになり,
+                                        # 壁の裏など見ていない場所は, ほかに道が無いときだけ通る
+          max_planning_time: 15.0       # 既定 5.0
+          downsample_costmap: false     # true にしない（Humble + rolling_window では原点がずれる）
+          downsampling_factor: 2        # 0.1 m → 0.2 m 相当で探索
+          angle_quantization_bins: 72
+          reverse_penalty: 10.0           # 後進のペナルティ
+          cost_penalty: 3.0               # 既定 2.0。インフレーション内を通るコストを重くし、障害物から離れた経路を選ばせる
+    behavior_server: #  [behavior_server]: Initial robot pose is not available.への対処
+      ros__parameters:
+        use_sim_time: true
+        global_frame: map # 規定値がodomであり、TFにodomは存在しない
+        robot_base_frame: base_link

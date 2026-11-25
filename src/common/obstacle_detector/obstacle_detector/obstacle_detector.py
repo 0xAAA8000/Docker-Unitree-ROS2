@@ -5,8 +5,8 @@
     --(床と坂の点を少し奥へずらす)----------------------------------> /lidar_clear      (Nav2 のクリア用)
     --(坂として障害物から外した点)----------------------------------> /lidar_slope      (確認用)
 
-判定は base_link 座標で行う. LiDAR の取付位置・姿勢と自車体の箱は lidar_bridge と同じ値を
-real.launch.py が robot.yaml の lidar_bridge の項から渡す. 配信する点の座標は LiDAR 座標のまま.
+判定は base_link 座標で行う. パラメータは real.launch.py (sim は sim_gazebo の bridge.launch.py) が
+robot_config から渡す. LiDAR の取付位置・姿勢と自車体の箱は lidar_bridge と同じ値. 配信する点の座標は LiDAR 座標のまま.
 
 高さによる判定
   地面 (ground_z) からの高さが obstacle_min_height より高く obstacle_max_height より低い点を障害物とする.

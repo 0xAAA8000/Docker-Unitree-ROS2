@@ -1,40 +1,44 @@
 """モード選択の Web (ポート 8080) を起動する.
 
-  ros2 launch robot_launcher launcher.launch.py token:=abcd launch_args:="lidar:=l1"
+  ros2 launch robot_launcher launcher.launch.py token:=abcd launch_args:="dry_run:=true"
 
+ポートなどの既定値は robot_config (nodes.launcher) にあり, launcher ノードが自分で読む.
 systemd から起動するときは, ros2 launch を挟まず実行ファイルを直接起動する
 (scripts/start_ros.sh, scripts/autostart/robot-bringup.sh). ros2 launch は停止の合図から
 数秒で強制終了するため, モードを順に止める時間が足りなくなる.
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
+
+from robot_config.launch_helpers import robot_argument
+
+
+def _setup(context):
+    params = {'robot': LaunchConfiguration('robot').perform(context)}
+    for name in ('token', 'launch_args', 'start_mode', 'arduino_port'):
+        value = LaunchConfiguration(name).perform(context)
+        if value:   # 空なら launcher が robot_config の値を使う
+            params[name] = value
+    return [Node(
+        package='robot_launcher',
+        executable='launcher',
+        name='robot_launcher',
+        output='screen',
+        parameters=[params],
+    )]
 
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('port', default_value='8080'),
-        DeclareLaunchArgument('mode_port', default_value='8081'),
+        robot_argument(),
         DeclareLaunchArgument('token', default_value=''),
         DeclareLaunchArgument('launch_args', default_value='',
-                              description='全モードの ros2 launch に足す引数 (例 "lidar:=l1")'),
-        DeclareLaunchArgument('arduino_port', default_value='/dev/ttyACM0'),
+                              description='全モードの ros2 launch に足す引数 (例 "dry_run:=true")'),
         DeclareLaunchArgument('start_mode', default_value='',
                               description='起動時に自動で始めるモード (goal / calibration, 空なら待つ)'),
-        Node(
-            package='robot_launcher',
-            executable='launcher',
-            name='robot_launcher',
-            output='screen',
-            parameters=[{
-                'port': ParameterValue(LaunchConfiguration('port'), value_type=int),
-                'mode_port': ParameterValue(LaunchConfiguration('mode_port'), value_type=int),
-                'token': ParameterValue(LaunchConfiguration('token'), value_type=str),
-                'launch_args': ParameterValue(LaunchConfiguration('launch_args'), value_type=str),
-                'arduino_port': LaunchConfiguration('arduino_port'),
-                'start_mode': ParameterValue(LaunchConfiguration('start_mode'), value_type=str),
-            }],
-        ),
+        DeclareLaunchArgument('arduino_port', default_value='',
+                              description='Arduino のシリアルポートの一時的な上書き (空ならロボットの設定の値)'),
+        OpaqueFunction(function=_setup),
     ])

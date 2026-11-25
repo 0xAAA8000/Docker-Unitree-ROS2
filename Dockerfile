@@ -41,6 +41,7 @@ RUN . /opt/ros/humble/setup.sh && . /opt/common_ws/install/setup.sh && \
 # ========== sim ==========
 FROM base AS sim
 ENV ROS2_TARGET=sim \
+    ROBOT_NAME=sim \
     IGN_GAZEBO_RESOURCE_PATH=/ros2_ws/src/sim_gazebo/model
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-ros-gz ros-humble-sdformat-urdf ros-humble-ign-ros2-control \

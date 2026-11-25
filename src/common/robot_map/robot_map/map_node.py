@@ -7,7 +7,7 @@
 配信: /map (transient_local なので, 後から起動した RViz や Web も最新の地図を受け取れる)
 
 点の高さは base_link 座標に直してから判定する (obstacle_detector と同じ考え方).
-ground_z, obstacle_min_height, obstacle_max_height は robot.yaml (obstacle_detector の項) と同じ意味.
+ground_z, obstacle_min_height, obstacle_max_height は obstacle_detector と同じ意味 (map.launch.py が robot_config から同じ値を渡す).
 """
 import array
 import math

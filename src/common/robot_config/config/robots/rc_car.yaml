@@ -1,0 +1,95 @@
+# 実機: 前後 0.50 m x 横幅 0.30 m のアッカーマン車, Unitree L1 を前に傾けて搭載, Arduino で駆動.
+# 書き方は common.yaml と同じ. robot: はロボットの事実 (各ノードへの値はここから計算される),
+# nodes: はこのロボットだけの上書き.
+robot:
+  sim: false
+  lidar:
+    model: l1                     # l1 / l2 (ドライバと Point-LIO の設定の選択)
+    port: /dev/ttyUSB0            # LiDAR のシリアルポート (L1, または L2 の serial 接続). /dev/serial/by-id/... が確実
+    l2_connection: ethernet       # L2 の接続方式 ethernet / serial
+    l2_lidar_ip: 192.168.1.62
+    l2_local_ip: 192.168.1.2
+    # base_link (車体の中心. 地面から 0.16 m) から見た LiDAR の位置 [m] と姿勢 [deg] (前 (下向き) に傾けたら pitch が正).
+    # LiDAR は中心から前に 0.12 m, 横ずれなし, 上に 0.05 m.
+    # 実測は ros2 run lidar_bridge ground_check で (平らな床に止めて推定値を書き写す)
+    mount: {x: 0.12, y: 0.0, z: 0.05, roll_deg: 0.0, pitch_deg: 31.4, yaw_deg: 0.0}
+  body:
+    # Nav2 の footprint (base_link 座標の多角形 [m]). 前後 0.50 x 横幅 0.30
+    footprint: [[0.25, 0.15], [0.25, -0.15], [-0.25, -0.15], [-0.25, 0.15]]
+    ground_z: -0.16               # base_link から見た地面の z (車体の中心が地面から 0.16 m)
+    # 自車体の点を除く箱 (base_link 座標). 車体 (前後 ±0.25, 左右 ±0.15) より 3 cm 大きく, 地面 (z=-0.16) は含めない.
+    # z の上は障害物の上限 (地面から 0.35 m = z 0.19) より上. 車体の上の部品を障害物にしない
+    self_box_min: [-0.28, -0.18, -0.13]
+    self_box_max: [0.28, 0.18, 0.20]
+    wheelbase: 0.26               # [m]
+    rear_axle_x: -0.13            # 後輪軸の x (base_link から) [m]. キャリブレーションの「後輪軸から LiDAR まで」に使う
+  arduino_port: /dev/ttyACM0      # /dev/serial/by-id/... が確実
+  cmd_vel_topic: /cmd_vel         # Nav2 の速度指令 (cmd_vel_converter が受ける)
+
+nodes:
+  obstacle_detector:
+    obstacle_min_height: 0.10     # 地面からこの高さ以上を障害物とする
+    obstacle_max_height: 0.35     # 地面からこの高さ未満を障害物とする (これより上は車体に当たらない)
+    # LiDAR からの最小距離. 車体の点は self_box_* で除くので小さくしてよい.
+    # 0.30 だと車体の前 0.17 m, 横 0.26 m 以内の障害物が見えなかった
+    obstacle_range_min: 0.08
+
+  cmd_vel_converter:
+    baud: 115200
+    # --- 以下はキャリブレーション前の仮の値。キャリブレーションの結果 (summary.yaml) が上書きする ---
+    servo_center: 85.0          # 舵角 0 になるサーボ角 [deg]
+    steer_ratio_k: 0.48         # sin(舵角) = K * sin(サーボ角 - 中央)。サーボ角を増やすと右に切れるなら負
+    max_steer_deg: 20.0         # 舵角の上限 [deg]
+    forward_gain: 0.03          # 前進 [m/s / throttle]
+    forward_deadband: 12.0      # 前進で動き出すスロットル
+    backward_gain: 0.03
+    backward_deadband: -12.0
+    max_throttle: 50.0          # スロットルの上限 (安全のため)
+    # 動くときの最低スロットル (絶対値. 0 で無効)。速度指令が小さくても, 動く間はこれを下回らない。
+    # 遅い指令でトルクが足りずに止まるときに設定する。キャリブレーションの結果では上書きされない。
+    # 目安: 止まった状態から確実に動き出すスロットル (calibrate_drive の deadband より少し大きい値)
+    min_forward_throttle: 0.0
+    min_backward_throttle: 0.0
+
+  # Nav2: 幅 0.80 m のドアを通れるように合わせている.
+  #   車体 0.30 m + 余白 (footprint_padding) 0.03 m x 2 = 0.36 m. ドアの両側に 0.22 m ずつ残る.
+  #   costmap の 1 セルは 5 cm (10 cm だとドアの縁が 1 セル分太り, 残りが 0.1 m 近く減る).
+  #   inflation_radius は外接円 (約 0.33 m) より大きく, ドアの中央 (縁から 0.4 m) を塞がない 0.45 m.
+  nav2:
+    controller_server:
+      ros__parameters:
+        progress_checker:
+          required_movement_radius: 0.3     # 10 秒でこれだけ動けば進んでいるとみなす
+        general_goal_checker: # ゴール判定
+          xy_goal_tolerance: 0.20  # 距離
+        FollowPath:
+          desired_linear_vel: 0.3                   # ドアを通るのでゆっくり
+          lookahead_dist: 0.6                       # 小さい車体なので近くを見る (最小旋回半径 約 0.75 m)
+          min_lookahead_dist: 0.4
+          max_lookahead_dist: 1.0
+          regulated_linear_scaling_min_radius: 0.9  # 既定 0.9。これより急なカーブでは減速する
+    local_costmap:
+      local_costmap:
+        ros__parameters:
+          width: 3
+          height: 3
+          resolution: 0.05
+          inflation_layer:
+            cost_scaling_factor: 4.0
+            inflation_radius: 0.45    # 外接円 (約 0.33 m) より大きく, ドアの中央 (縁から 0.4 m) を塞がない
+    global_costmap:
+      global_costmap:
+        ros__parameters:
+          resolution: 0.05
+          track_unknown_space: true     # LiDAR の光線が通っていない場所 (壁の裏など) を「未知」にする.
+                                        # 経路計画は未知を一番重いコストで扱う (common.yaml の planner_server の説明)
+          footprint_padding: 0.03   # 経路計画時だけ車体を 3 cm 大きく見る. 0.15 だと幅 0.60 m になりドアをほぼ通れない
+          width: 30                 # 0.05 m のセルで 600 x 600. 広げると経路計画が遅くなる
+          height: 30
+          inflation_layer:
+            cost_scaling_factor: 4.0
+            inflation_radius: 0.45    # 外接円 (約 0.33 m) より大きく, ドアの中央 (縁から 0.4 m) を塞がない
+    planner_server:
+      ros__parameters:
+        GridBased:
+          minimum_turning_radius: 0.75        # wheelbase 0.26 / tan(最大舵角 20 deg) ~= 0.71

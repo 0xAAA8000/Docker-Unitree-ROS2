@@ -8,6 +8,8 @@ source /opt/ros/humble/setup.bash
 source ~/ros2_ws/install/setup.bash
 export ROS2_TARGET=l1
 export ROS_DOMAIN_ID=0
+# 設定 (src/common/robot_config/config/robots/<名前>.yaml) を使うロボット. ポートなどはそのファイルに書く
+export ROBOT_NAME=rc_car
 export PYTHONUNBUFFERED=1
 
 # 全モードの ros2 launch に足す引数 (例 "lidar_port:=/dev/serial/by-id/...") と, スマホの画面の key.

@@ -1,6 +1,7 @@
 """キャリブレーションのモードの画面 (ポート 8081).
 
   ros2 launch robot_launcher calibration.launch.py      # LiDAR と Point-LIO も一緒に起動する
+  パラメータは calibration.launch.py が robot_config (nodes.calib_web) から渡す
 
   * calib_dir (~/drive_calib) の計測結果を一覧し, 使うものを選ぶ (calib_dir/selected に書く).
     モード選択の launcher は, 目的地設定の自走を起動するときにそれを calibration_file として渡す

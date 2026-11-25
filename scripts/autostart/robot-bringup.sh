@@ -12,7 +12,6 @@ if [[ -f "$CONF" ]]; then
     . "$CONF"
 fi
 ROS_WS=${ROS_WS:-$HOME/ros2_ws}
-ARDUINO_PORT=${ARDUINO_PORT:-/dev/ttyACM0}
 
 if [[ ! -f /opt/ros/humble/setup.bash ]]; then
     echo "/opt/ros/humble/setup.bash が無い (ROS 2 Humble が入っていない)" >&2
@@ -28,6 +27,8 @@ fi
 
 export ROS2_TARGET=${ROS2_TARGET:-l2}
 export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+# 設定 (src/common/robot_config/config/robots/<名前>.yaml) を使うロボット. ポートなどはそのファイルに書く
+export ROBOT_NAME=${ROBOT_NAME:-rc_car}
 export PYTHONUNBUFFERED=1           # journalctl にログがすぐ出るように
 export RCUTILS_COLORIZED_OUTPUT=0   # journalctl に色のエスケープ文字が混ざらないように
 
@@ -36,9 +37,10 @@ export RCUTILS_COLORIZED_OUTPUT=0   # journalctl に色のエスケープ文字�
 # ROBOT_LAUNCH_ARGS: 全モードの ros2 launch に足す引数 (空白区切り. 例 "dry_run:=true")
 # ROBOT_WEB_TOKEN:  設定すると http://<IP>:8080/?key=<token> でしか操作できない
 # ROBOT_START_MODE: 起動時に自動で始めるモード (goal / calibration. 空ならスマホで選ぶのを待つ)
-echo "起動: robot_launcher (ROS2_TARGET=$ROS2_TARGET, ROS_DOMAIN_ID=$ROS_DOMAIN_ID, ユーザー $(id -un))"
-# 空のパラメータ (-p token:=) は ROS 2 が解釈できず起動に失敗するので, 値があるものだけ渡す
-params=(-p "arduino_port:=$ARDUINO_PORT")
+echo "起動: robot_launcher (ROBOT_NAME=$ROBOT_NAME, ROS_DOMAIN_ID=$ROS_DOMAIN_ID, ユーザー $(id -un))"
+# 空のパラメータ (-p token:=) は ROS 2 が解釈できず起動に失敗するので, 値があるものだけ渡す.
+# Arduino のポートは robot_config の robot.arduino_port を使う (ARDUINO_PORT は udev の監視対象)
+params=()
 [[ -n "${ROBOT_LAUNCH_ARGS:-}" ]] && params+=(-p "launch_args:=$ROBOT_LAUNCH_ARGS")
 [[ -n "${ROBOT_WEB_TOKEN:-}" ]] && params+=(-p "token:=$ROBOT_WEB_TOKEN")
 [[ -n "${ROBOT_START_MODE:-}" ]] && params+=(-p "start_mode:=$ROBOT_START_MODE")

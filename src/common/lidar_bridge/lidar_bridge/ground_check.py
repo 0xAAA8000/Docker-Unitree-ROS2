@@ -1,22 +1,22 @@
-"""床の点群から LiDAR の取付角度と地面の高さを推定し, robot.yaml の値と比べる.
+"""床の点群から LiDAR の取付角度と地面の高さを推定し, robot_config の値と比べる.
 
   ros2 run lidar_bridge ground_check                 # LiDAR ドライバを起動した状態で, 平らな床に止めておく
-  ros2 run lidar_bridge ground_check --ros-args -p config:=/path/to/robot.yaml
+  ros2 run lidar_bridge ground_check --ros-args -p robot:=rc_car   # 既定は $ROBOT_NAME か rc_car
 
-robot.yaml の取付位置・姿勢で点を base_link 座標に直し, 床の平面を当てはめる.
+robot_config (robots/<robot>.yaml の robot.lidar.mount) の取付位置・姿勢で点を base_link 座標に直し, 床の平面を当てはめる.
 設定が正しければ床は水平 (傾き 0) で, 高さは ground_z になる.
-傾いていれば lidar_pitch_deg / lidar_roll_deg が, 高さがずれていれば ground_z が実機と合っていない.
+傾いていれば mount の pitch_deg / roll_deg が, 高さがずれていれば body.ground_z が実機と合っていない.
 床が障害物 (地面から obstacle_min_height 以上) と判定される割合も表示する.
 """
 import math
-import os
 
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2
-import yaml
+
+from robot_config import default_robot, load as load_config
 
 from lidar_bridge.lidar_bridge_node import cloud_to_array, rotation_rpy
 
@@ -118,20 +118,12 @@ class GroundCheck(Node):
 
     def __init__(self):
         super().__init__('ground_check')
-        default = ''
-        try:
-            from ament_index_python.packages import get_package_share_directory
-            default = os.path.join(get_package_share_directory('lidar_bridge'), 'config',
-                                   'robot.yaml')
-        except Exception:   # noqa: BLE001 (パッケージ外から実行したとき)
-            pass
-        config = self.declare_parameter('config', default).value
+        robot = self.declare_parameter('robot', default_robot()).value or default_robot()
         topic = self.declare_parameter('cloud_topic', '/unilidar/cloud').value
-        with open(config) as f:
-            doc = yaml.safe_load(f)
-        prm = dict(doc['lidar_bridge']['ros__parameters'])
-        # 地面の高さと障害物の高さは obstacle_detector の項にある
-        prm.update((doc.get('obstacle_detector') or {}).get('ros__parameters') or {})
+        cfg = load_config(robot)
+        # 取付・自車体の箱・地面の高さ・障害物の判定は obstacle_detector に渡る値と同じ
+        prm = cfg.node('obstacle_detector')
+        config = f'robot_config の {robot} (robots/{robot}.yaml の robot.lidar.mount, body.ground_z, body.self_box_*)'
         self.mount = {k: float(prm.get(k, v)) for k, v in (
             ('lidar_x', 0.2), ('lidar_y', 0.0), ('lidar_z', 0.25), ('lidar_roll_deg', 0.0),
             ('lidar_pitch_deg', 0.0), ('lidar_yaw_deg', 0.0), ('ground_z', -0.1),
@@ -175,9 +167,9 @@ class GroundCheck(Node):
             f'{100 * s["obstacle_ratio"]:.0f}%\n'
             f'  今の設定で床が地面 (ground_z) から浮いて見える高さ [m]: {rise}\n'
             f'  今の設定で見た床の傾き {s["tilt_deg"]:.1f} deg (0 なら取付角度は合っている)\n'
-            f'  推定値: lidar_roll_deg {s["roll_deg"]:.1f} (今 {m["lidar_roll_deg"]:.1f})  '
-            f'lidar_pitch_deg {s["pitch_deg"]:.1f} (今 {m["lidar_pitch_deg"]:.1f})  '
-            f'ground_z {s["ground_z"]:.3f} (今 {m["ground_z"]:.3f})', flush=True)
+            f'  推定値 (robots/<robot>.yaml): lidar.mount.roll_deg {s["roll_deg"]:.1f} (今 {m["lidar_roll_deg"]:.1f})  '
+            f'lidar.mount.pitch_deg {s["pitch_deg"]:.1f} (今 {m["lidar_pitch_deg"]:.1f})  '
+            f'body.ground_z {s["ground_z"]:.3f} (今 {m["ground_z"]:.3f})', flush=True)
 
     def report_near(self, xyz):
         near = near_obstacles(xyz, self.mount, self.self_min, self.self_max)
@@ -191,7 +183,7 @@ class GroundCheck(Node):
             f'\nロボットから 1 m 以内の障害物の点: {len(near)} 点, 範囲 (base_link) '
             f'{fmt(lo)} - {fmt(hi)}\n'
             f'  周りに本当の障害物が無いのにここに点があるなら, 車体や取付台が写っている.\n'
-            f'  self_box_min / self_box_max (今 {fmt(self.self_min)} - {fmt(self.self_max)}) を\n'
+            f'  robots/<robot>.yaml の body.self_box_min / self_box_max (今 {fmt(self.self_min)} - {fmt(self.self_max)}) を\n'
             f'  この範囲を含むよう広げる: 例 self_box_min {fmt(np.minimum(self.self_min, lo - 0.03))}'
             f'  self_box_max {fmt(np.maximum(self.self_max, hi + 0.03))}', flush=True)
 

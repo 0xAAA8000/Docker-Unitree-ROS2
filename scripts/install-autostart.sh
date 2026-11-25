@@ -55,6 +55,9 @@ if [[ ! -f "$CONF" ]]; then
 ROS_WS=$WS
 ROS2_TARGET=$TARGET
 ROS_DOMAIN_ID=0
+# 設定を使うロボット (src/common/robot_config/config/robots/<名前>.yaml). ポートなどはそのファイルに書く
+ROBOT_NAME=rc_car
+# udev が監視する Arduino のデバイス (ノードが使うポートは robots/<名前>.yaml の robot.arduino_port)
 ARDUINO_PORT=$PORT
 # robot.launch.py に渡す引数 (空白区切り). 例:
 #   ROBOT_LAUNCH_ARGS="calibration_file:=$HOME/drive_calib/<日時>/summary.yaml web_token:=abcd"

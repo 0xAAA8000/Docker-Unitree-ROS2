@@ -16,6 +16,7 @@ Docker イメージ (sim 含む) は[最後の節](#docker-で動かす-任意)�
 | `src/l1/`, `src/l2/` | LiDAR の機種ごとのパッケージ (ドライバなど) |
 | `src/sim/` | Gazebo のシミュレーション (`sim_gazebo`) |
 | `firmware/` | Arduino のスケッチ (`operator.ino`) |
+| `src/common/robot_config/config/` | **全ノードの設定** (共通の `common.yaml` と、ロボットごとの `robots/<名前>.yaml`)。[下記](#設定-robot_config) |
 | `scripts/` | セットアップ (`setup-raspi.sh`)、外部リポジトリの取得 (`fetch-external.sh`)、自動起動など |
 | `patches/` | 外部リポジトリに当てる、こちらの変更 |
 
@@ -23,6 +24,7 @@ Docker イメージ (sim 含む) は[最後の節](#docker-で動かす-任意)�
 
 | パッケージ | 内容 |
 | --- | --- |
+| `robot_config` | 全ノードの設定をまとめて持ち、launch が起動時に各ノードへ配る |
 | `lidar_bridge` | LiDAR ドライバのトピックを Point-LIO 用の名前・座標に付け替える。停止判定 (ZUPT 用)、取付角度の確認 |
 | `obstacle_detector` | 点群から Nav2 の障害物とクリア用の点群を作る (坂の判定つき) |
 | `robot_navigation` | Nav2 の起動と設定 |
@@ -87,6 +89,30 @@ source ~/.bashrc
 * L1 (`/dev/ttyUSB*`) と Arduino (`/dev/ttyACM*`) は挿す順で番号が変わることがあるので、
   `/dev/serial/by-id/...` で指定するのが確実です。
 
+## 設定 (`robot_config`)
+
+全ノードの設定を `src/common/robot_config/config/` にまとめてあります。各ノードの launch が、起動するときにここから値を配ります
+(ノードごとの設定ファイルはありません)。yaml を書き換えたら、ビルドし直さずに次の起動から反映されます。
+
+| ファイル | 中身 |
+| --- | --- |
+| `common.yaml` | ロボットに依らない設定。`nodes.<ノード>` にノードごとのパラメータ (Nav2 は `nodes.nav2`) |
+| `robots/rc_car.yaml` | 実機。`robot:` にロボットの事実 (LiDAR の機種・ポート・取付、車体の footprint・地面の高さ・自車体の箱・ホイールベース、Arduino のポート)、`nodes:` にこのロボットだけの値 |
+| `robots/sim.yaml` | Gazebo のシミュレーション |
+
+* 各ノードに渡る値は、`common.yaml` の値に、ロボットの事実から計算した値 (自車体の箱、Nav2 の footprint、
+  後輪軸から LiDAR までの距離など) と `robots/<名前>.yaml` の `nodes:` を重ねたものです (後のものが優先)。
+* 使うロボットは launch 引数 `robot:=<名前>`、なければ環境変数 `ROBOT_NAME`、なければ `rc_car` です。
+  新しいロボットは `robots/` にファイルを足します。
+* キャリブレーションの結果 (`~/drive_calib/.../summary.yaml`) は含めません。モード選択の画面で選ぶか `calibration_file:=` で渡します。
+* 実際に渡る値は次のコマンドで確認できます。
+
+```bash
+ros2 run robot_config show                          # ロボットの事実とノードの一覧
+ros2 run robot_config show obstacle_detector        # そのノードに渡る値
+ros2 run robot_config show nav2 --robot sim         # sim の Nav2 のパラメータ
+```
+
 ## 実機で Nav2 を動かす (`lidar_bridge` / `robot_operation`)
 
 sim と同じトピック・TF にそろえて、Point-LIO → Nav2 → Arduino の順につなぎます。
@@ -103,22 +129,19 @@ sim と同じトピック・TF にそろえて、Point-LIO → Nav2 → Arduino 
 ```bash
 # 1. LiDAR ドライバ
 ros2 launch unitree_lidar_ros2 launch.py
-# 2. ブリッジ + 静的 TF + Point-LIO (L1 なら lidar:=l1)
-ros2 launch lidar_bridge real.launch.py lidar:=l2
-# 3. Nav2 (既定が実機用. Gazebo で動かすときは sim:=true)
+# 2. ブリッジ + 障害物の検知 + 静的 TF + Point-LIO (機種はロボットの設定の lidar.model)
+ros2 launch lidar_bridge real.launch.py
+# 3. Nav2 (Gazebo で動かすときは robot:=sim)
 ros2 launch robot_navigation navigation.launch.py
 # 4. Twist -> Arduino (最初は dry_run:=true で指令値だけ確認するとよい)
 ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
 ```
 
-* Nav2 のパラメータは実機用が `src/common/robot_navigation/config/nav2_params_real.yaml`
-  (前後 0.50 m x 横幅 0.30 m の車体、幅 0.80 m のドアを通れる設定)、sim 用が `nav2_params.yaml` です。
-  `navigation.launch.py` は既定で実機用 (`use_sim_time:=false`、`publish_base_tf:=false`、
-  `cmd_vel_topic:=/cmd_vel`、`nav2_params_real.yaml`) で起動し、`sim:=true` でこれらがまとめて sim 用になります。
-  個別に指定した引数は `sim` より優先されます。
-* LiDAR の取付位置・傾き (前に 30 度 → `lidar_pitch_deg: 30`)、自車体の箱は
-  `src/common/lidar_bridge/config/robot.yaml` の `lidar_bridge` の項、地面の高さと障害物の判定は同じファイルの
-  `obstacle_detector` の項で設定します。障害物の高さ判定は、この取付姿勢で
+* 設定はすべて `robot_config` にあります ([下記](#設定-robot_config))。Nav2 のパラメータは共通部分が `common.yaml` の
+  `nodes.nav2`、実機 (前後 0.50 m x 横幅 0.30 m の車体、幅 0.80 m のドアを通れる設定) の分が `robots/rc_car.yaml`、
+  sim の分が `robots/sim.yaml` です。`use_sim_time`、`/cmd_vel` の行き先、footprint もロボットの設定から決まります。
+* LiDAR の取付位置・傾き (前に 30 度 → `pitch_deg: 30`)、地面の高さ、自車体の箱は `robots/<名前>.yaml` の
+  `robot.lidar.mount` と `robot.body` で設定します。障害物の高さ判定は、この取付姿勢で
   base_link 座標に直してから行います (配信する点の座標は LiDAR 座標のまま)。
 * 経路計画用の costmap (global) は、LiDAR の光線が通っていない場所 (壁の裏など) を「未知」として扱い、
   経路計画はそこを一番重いコストで扱います (通れなくはないが、見えている道の約 4 倍のコスト)。
@@ -145,13 +168,14 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
   それを含む `self_box_min` / `self_box_max` の例も表示します。
 * `cmd_vel_converter` は Twist を `tan(δ) = L·ω / v` で舵角に、`sin(δ) = K·sin(φ − φ0)` でサーボ角に、
   `throttle = deadband + v / gain` でスロットルに変換します。値は `calibration_file`
-  (calibrate_drive の `summary.yaml`) か `src/common/robot_operation/config/operation.yaml` から読みます。
-* キャリブレーション後に遅い指令でモーターが止まってしまう (トルク不足) ときは、`operation.yaml` の
+  (calibrate_drive の `summary.yaml`) か、ロボットの設定 (`robots/<名前>.yaml` の `nodes.cmd_vel_converter`) から読みます。
+* キャリブレーション後に遅い指令でモーターが止まってしまう (トルク不足) ときは、`robots/<名前>.yaml` の
+  `nodes.cmd_vel_converter` の
   `min_forward_throttle` / `min_backward_throttle` に「止まった状態から確実に動き出すスロットル」を設定します。
   動く間はこの値を下回りません (キャリブレーションの結果では上書きされません。0 で無効)。
 * `/cmd_vel` が 0.5 秒途絶えるとスロットル 0 を送ります。
 * LiDAR (L1 は `/dev/ttyUSB0`) と Arduino の USB シリアルが同じ名前にならないよう、
-  `port:=/dev/serial/by-id/...` で指定するのが確実です。
+  `robots/<名前>.yaml` の `robot.lidar.port` / `robot.arduino_port` を `/dev/serial/by-id/...` にするのが確実です。
 
 ### 決めた秒数だけ前進して点群を記録する (`drive_forward`)
 
@@ -197,16 +221,16 @@ LiDAR ドライバ、lidar_bridge + Point-LIO、Nav2、Arduino 変換、2D 地�
 スマホ用の Web サーバー (`robot_goal web`) を 1 つのコマンドで起動します。
 
 ```bash
-ros2 launch robot_bringup robot.launch.py                       # 機種は $ROS2_TARGET (無ければ l2)
-ros2 launch robot_bringup robot.launch.py lidar:=l1 lidar_port:=/dev/serial/by-id/... \
-    arduino_port:=/dev/serial/by-id/... calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
+ros2 launch robot_bringup robot.launch.py                       # ロボットは $ROBOT_NAME (無ければ rc_car)
+ros2 launch robot_bringup robot.launch.py calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
+ros2 launch robot_bringup robot.launch.py lidar_port:=/dev/ttyUSB1   # 設定の一時的な上書き (lidar / lidar_port / arduino_port / web_port)
 ros2 launch robot_bringup robot.launch.py dry_run:=true         # Arduino に送らずログだけ
 ros2 launch robot_bringup robot.launch.py nav:=false operation:=false   # 地図作り・確認だけ
 ```
 
 * `driver` / `point_lio` / `nav` / `operation` / `map` / `web` / `rviz` を `false` にすると
   その部分を起動しません (`rviz` は既定で `false`。PC 側で開く)。
-* Nav2 は Point-LIO の TF が出始めるのを待つため `nav_delay` 秒 (既定 5) 後に起動します。
+* Nav2 は Point-LIO の TF が出始めるのを待つため `bringup.nav_delay` 秒 (既定 5) 後に起動します。
 
 目的地は別のターミナルから送ります (座標は `map`、Point-LIO の起動位置が原点)。
 
@@ -229,8 +253,9 @@ udev が systemd のサービス `robot-bringup.service` を起動する仕組�
 ./scripts/install-autostart.sh uninstall   # 元に戻す
 ```
 
-* 設定は `/etc/default/robot-bringup` に書きます (ワークスペースの場所、`ROS_DOMAIN_ID`、
-  launch 引数 `ROBOT_LAUNCH_ARGS="calibration_file:=... web_token:=..."` など)。
+* 設定は `/etc/default/robot-bringup` に書きます (ワークスペースの場所、`ROS_DOMAIN_ID`、使うロボット `ROBOT_NAME`、
+  launch 引数 `ROBOT_LAUNCH_ARGS="calibration_file:=... web_token:=..."` など)。ポートなどロボットの設定は
+  `robot_config` の `robots/<名前>.yaml` に書きます (`ARDUINO_PORT` は udev が監視するデバイスだけに使う)。
   変更したら `sudo systemctl restart robot-bringup` するか、Arduino を挿し直します。
 * ログは `journalctl -u robot-bringup -f`、状態は `systemctl status robot-bringup` で見ます。
 * systemd から起動したプロセスは `~/.bashrc` を読みません。そのため
@@ -267,7 +292,7 @@ udev が systemd のサービス `robot-bringup.service` を起動する仕組�
 
 ```bash
 ros2 run robot_launcher launcher                                   # 手で起動する場合
-ros2 run robot_launcher launcher --ros-args -p token:=abcd -p launch_args:="lidar_port:=/dev/serial/by-id/..."
+ros2 run robot_launcher launcher --ros-args -p token:=abcd -p launch_args:="dry_run:=true"
 ```
 
 ## スマホから地図をタップして目的地を送る (`robot_map` / `robot_goal web`)
@@ -332,7 +357,7 @@ Point-LIO の `/cloud_registered` (map 座標の点群、毎スキャン) を ba
 5 cm 四方のセルごとに数えます。
 
 * 床から ±`floor_tolerance` (5 cm) の点 → 床、`obstacle_min_height`〜`obstacle_max_height` の点 → 障害物。
-  `ground_z` と障害物の高さは `robot.yaml` (`obstacle_detector` の項) と同じ値を使います。
+  `ground_z` と障害物の高さは `obstacle_detector` と同じ値 (`robot_config` から) を使います。
 * 障害物の点が 3 回以上で、かつ床の点の半分以上ならそのセルは占有、床だけなら空き、どちらも無ければ未知です。
   人が横切った跡は、その後に床がたくさん見えれば空きに戻ります。
 * ロボットから `max_range` (15 m) より遠い点は使いません。
@@ -376,7 +401,8 @@ L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
 * TF: `camera_init` → `aft_mapped`
   (`odom_header_frame_id` / `odom_child_frame_id` パラメータで変更可能)
 
-パラメータは `src/common/point_lio_ros2/config/*.yaml` にあります。
+パラメータは `src/common/point_lio_ros2/config/*.yaml` にあります。`real.launch.py` で起動したときは、
+これに `robot_config` の `nodes.point_lio` を重ねます。
 
 動作確認や、うまく動かないときの切り分けは
 [ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md#14-トラブルシュート早見表)

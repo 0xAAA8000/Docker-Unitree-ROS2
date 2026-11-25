@@ -9,10 +9,8 @@ _DTYPES = {1: 'i1', 2: 'u1', 3: 'i2', 4: 'u2', 5: 'i4', 6: 'u4', 7: 'f4', 8: 'f8
 # 1スキャン内に割り振る時刻の幅 [s]。gz は全点同時刻なので小さくする（グループ分けが目的）
 TIME_SPREAD = 1.0e-3
 
-# 自車体の点を除去する箱（LiDAR 座標系 [m]）
-# 車体: base_link 基準で x ±0.6, y ±0.325。LiDAR は base_link の (+0.2, 0, +0.25) にあり、地面は LiDAR の -0.35
-SELF_BOX_MIN = np.array([-0.85, -0.40, -0.45])
-SELF_BOX_MAX = np.array([ 0.45,  0.40,  0.10])
+# 自車体の点を除去する箱（LiDAR 座標系 [m]）は self_box_min / self_box_max パラメータで受け取る.
+# bridge.launch.py が robot_config (robots/sim.yaml の body.self_box_*. base_link 座標) を LiDAR 座標に直して渡す
 
 
 class FilterInvalidPoints(Node):
@@ -22,6 +20,8 @@ class FilterInvalidPoints(Node):
 
     def __init__(self):
         super().__init__('filter_invalid_points')
+        self.self_min = np.array(self.declare_parameter('self_box_min', [-0.85, -0.40, -0.45]).value)
+        self.self_max = np.array(self.declare_parameter('self_box_max', [0.45, 0.40, 0.10]).value)
         self.sub = self.create_subscription(PointCloud2, '/lidar_raw', self.cb, 10)
         self.pub = self.create_publisher(PointCloud2, '/lidar', 10)
 
@@ -42,9 +42,10 @@ class FilterInvalidPoints(Node):
 
         x, y, z = pts['x'], pts['y'], pts['z']
         valid = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
-        in_self = ((x > SELF_BOX_MIN[0]) & (x < SELF_BOX_MAX[0]) &
-                   (y > SELF_BOX_MIN[1]) & (y < SELF_BOX_MAX[1]) &
-                   (z > SELF_BOX_MIN[2]) & (z < SELF_BOX_MAX[2]))
+        lo, hi = self.self_min, self.self_max
+        in_self = ((x > lo[0]) & (x < hi[0]) &
+                   (y > lo[1]) & (y < hi[1]) &
+                   (z > lo[2]) & (z < hi[2]))
         pts = pts[valid & ~in_self]
 
         # 末尾に time(float32) を追加したレイアウト
