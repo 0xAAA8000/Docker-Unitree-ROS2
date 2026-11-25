@@ -173,6 +173,9 @@ def make_server(host, port, backend, index_html, token=''):
             elif url.path == '/api/cancel':
                 ok, msg = backend.cancel()
                 self._json(200, {'ok': ok, 'message': msg})
+            elif url.path == '/api/clear_costmap':
+                ok, msg = backend.clear_costmaps()
+                self._json(200 if ok else 503, {'ok': ok, 'message': msg})
             else:
                 self._json(404, {'ok': False, 'message': 'not found'})
 

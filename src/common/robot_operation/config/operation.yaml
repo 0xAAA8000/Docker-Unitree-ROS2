@@ -21,3 +21,9 @@ cmd_vel_converter:
     backward_deadband: -12.0
     max_throttle: 50.0          # スロットルの上限 (安全のため)
     min_speed: 0.02             # これ未満の速度指令は停止 [m/s]
+
+    # 動くときの最低スロットル (絶対値. 0 で無効)。速度指令が小さくても, 動く間はこれを下回らない。
+    # 遅い指令でトルクが足りずに止まるときに設定する。キャリブレーションの結果では上書きされない。
+    # 目安: 止まった状態から確実に動き出すスロットル (calibrate_drive の deadband より少し大きい値)
+    min_forward_throttle: 0.0
+    min_backward_throttle: 0.0

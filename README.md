@@ -122,6 +122,12 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
   `/stationary` を true にします (`real.launch.py` が起動)。**速度指令を出さずに動かすとき**
   (手で持って動かす試験、`calibrate_drive` で Arduino を直接動かすときなど) は、
   等速で動いていると止まっていると誤判定するので `zupt:=false` で起動してください。
+* 障害物 (`/lidar_obstacles`) は LiDAR から `obstacle_range_min` (0.08 m) 以上の点から作ります
+  (Point-LIO 用の `range_min` 0.30 m とは別。車体の点は `self_box_*` で除きます)。
+  Nav2 のクリアには `/lidar_clear` を使います。床の点を LiDAR から水平に `ground_clear_extend` (0.10 m) 奥へずらしてあり、
+  床が見えているセルに残った誤検知の障害物も消えます。それでも残るときは、目的地の画面の「障害物を消す」で
+  costmap の障害物をすべて消せます (見えている障害物はすぐ付き直ります)。
+* LiDAR は前に傾けて付けているので、車体の真横の低い所と後ろの低い所は見えません。
 * 床が障害物として扱われる (Nav2 の経路が作れない) ときは、取付角度か `ground_z` が実機とずれています。
   平らな床に止めて LiDAR ドライバだけ起動し、`ros2 run lidar_bridge ground_check` を実行すると、
   床の点から `lidar_pitch_deg` / `lidar_roll_deg` / `ground_z` を推定して今の値と並べて表示します。
@@ -130,6 +136,9 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
 * `cmd_vel_converter` は Twist を `tan(δ) = L·ω / v` で舵角に、`sin(δ) = K·sin(φ − φ0)` でサーボ角に、
   `throttle = deadband + v / gain` でスロットルに変換します。値は `calibration_file`
   (calibrate_drive の `summary.yaml`) か `src/common/robot_operation/config/operation.yaml` から読みます。
+* キャリブレーション後に遅い指令でモーターが止まってしまう (トルク不足) ときは、`operation.yaml` の
+  `min_forward_throttle` / `min_backward_throttle` に「止まった状態から確実に動き出すスロットル」を設定します。
+  動く間はこの値を下回りません (キャリブレーションの結果では上書きされません。0 で無効)。
 * `/cmd_vel` が 0.5 秒途絶えるとスロットル 0 を送ります。
 * LiDAR (L1 は `/dev/ttyUSB0`) と Arduino の USB シリアルが同じ名前にならないよう、
   `port:=/dev/serial/by-id/...` で指定するのが確実です。

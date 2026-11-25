@@ -11,6 +11,8 @@ Twist のフィールド
   sin(delta) = K * sin(phi - phi0)
 スロットルへの変換
   throttle = deadband + v / gain   (前進 / 後退で別の値)
+  ただし動いている間は min_forward_throttle / min_backward_throttle を下回らない
+  (遅い指令でモーターのトルクが足りず止まってしまうのを防ぐ. 0 で無効)
 
 安全策
   * cmd_timeout 秒 Twist が来なければスロットル 0 にする
@@ -71,6 +73,9 @@ class CmdVelConverter(Node):
         self.backward_deadband = p('backward_deadband', -12.0).value
         self.max_throttle = p('max_throttle', 50.0).value          # 安全のための上限
         self.min_speed = p('min_speed', 0.02).value                # これ未満の速度指令は停止
+        # 動くときの最低スロットル (絶対値. 0 で無効). キャリブレーションでは上書きされない
+        self.min_forward_throttle = abs(p('min_forward_throttle', 0.0).value)
+        self.min_backward_throttle = abs(p('min_backward_throttle', 0.0).value)
 
         if calibration_file:
             for key, value in load_calibration(calibration_file).items():
@@ -82,7 +87,8 @@ class CmdVelConverter(Node):
             f'L={self.wheelbase:.3f} center={self.servo_center:.1f} K={self.steer_ratio_k:.3f} '
             f'max_steer={self.max_steer_deg:.1f}deg '
             f'fwd={self.forward_gain:.4f}/{self.forward_deadband:.1f} '
-            f'bwd={self.backward_gain:.4f}/{self.backward_deadband:.1f}')
+            f'bwd={self.backward_gain:.4f}/{self.backward_deadband:.1f} '
+            f'min_throttle fwd={self.min_forward_throttle:.0f} bwd={self.min_backward_throttle:.0f}')
 
         self.arduino = None
         if not self.dry_run:
@@ -105,9 +111,9 @@ class CmdVelConverter(Node):
         if abs(v) < self.min_speed:
             return 0
         if v > 0:
-            thr = self.forward_deadband + v / self.forward_gain
+            thr = max(self.forward_deadband + v / self.forward_gain, self.min_forward_throttle)
             return int(round(min(max(thr, 0.0), self.max_throttle)))
-        thr = self.backward_deadband + v / self.backward_gain
+        thr = min(self.backward_deadband + v / self.backward_gain, -self.min_backward_throttle)
         return int(round(max(min(thr, 0.0), -self.max_throttle)))
 
     def convert(self, v, omega):

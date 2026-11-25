@@ -38,6 +38,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: 
 #hint span { background: var(--panel); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); }
 #side { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 44px; display: flex; flex-direction: column; gap: 8px; }
 #side button { width: 52px; height: 44px; font-size: 13px; }
+#side #clearobs { height: 52px; font-size: 11px; line-height: 1.25; padding: 0; }
 #panel { background: var(--panel); border-top: 1px solid var(--line);
   padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
   display: grid; gap: 8px; }
@@ -69,6 +70,7 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
     <div id="side">
       <button id="follow" class="on" title="ロボットを画面の中心に保つ">追従</button>
       <button id="fit" title="地図全体を表示">全体</button>
+      <button id="clearobs" title="costmap に残った障害物 (誤検知) を消す">障害物<br>を消す</button>
       <button id="modes" title="モード選択の画面へ" hidden>モード</button>
     </div>
     <div id="toast" hidden></div>
@@ -385,6 +387,13 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
 
   $('cancel').addEventListener('click', async () => {
     const r = await post('/api/cancel');
+    toast(r.message || '');
+  });
+
+  $('clearobs').addEventListener('click', async () => {
+    if (!confirm('記憶している障害物をすべて消します. 今見えている障害物はすぐ付き直りますが, '
+      + 'LiDAR から見えない場所 (車体の真横の低い所や後ろ) の障害物も消えます. 消しますか?')) return;
+    const r = await post('/api/clear_costmap');
     toast(r.message || '');
   });
 

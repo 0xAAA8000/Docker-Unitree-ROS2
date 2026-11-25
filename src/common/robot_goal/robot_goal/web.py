@@ -8,6 +8,7 @@
 
 購読: /map (2D 地図), /plan (Nav2 の経路), TF (map -> base_link)
 送信: navigate_to_pose アクション (robot_goal goal と同じ)
+呼ぶ: costmap の障害物の消去 (画面の「障害物を消す」. 誤検知が残ったとき用)
 """
 import math
 import os
@@ -19,6 +20,7 @@ from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
+from nav2_msgs.srv import ClearEntireCostmap
 from nav_msgs.msg import OccupancyGrid, Path
 import rclpy
 from rclpy.action import ActionClient
@@ -65,6 +67,11 @@ class WebGoal(Node):
         self.goal_seq = 0
 
         self.client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.clear_clients = [
+            self.create_client(ClearEntireCostmap, name) for name in p(
+                'clear_costmap_services',
+                ['/global_costmap/clear_entirely_global_costmap',
+                 '/local_costmap/clear_entirely_local_costmap']).value]
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         map_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -191,6 +198,16 @@ class WebGoal(Node):
             goal, feedback_callback=lambda m: self.on_feedback(seq, m))
         future.add_done_callback(lambda f: self.on_accepted(seq, f))
         return True, '送信した'
+
+    def clear_costmaps(self):
+        """costmap の障害物をすべて消す. 今見えている障害物は次の点群ですぐ付き直る."""
+        ready = [c for c in self.clear_clients if c.service_is_ready()]
+        if not ready:
+            return False, 'costmap の消去サービスが見つからない (Nav2 は起動している?)'
+        for c in ready:
+            c.call_async(ClearEntireCostmap.Request())
+        self.get_logger().info(f'costmap の障害物を消す: {[c.srv_name for c in ready]}')
+        return True, '障害物を消した. 見えている障害物はすぐ付き直ります'
 
     def cancel(self):
         with self.lock:

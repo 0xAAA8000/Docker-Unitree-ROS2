@@ -1,7 +1,15 @@
 """Unitree L1/L2 ドライバのトピックを, sim と同じ名前・形で Point-LIO と Nav2 に配信する.
 
-  /unilidar/cloud --(自車体・近すぎる点を除去)--> /lidar            (Point-LIO, Nav2 のクリア用)
+  /unilidar/cloud --(自車体・近すぎる点を除去)--> /lidar            (Point-LIO)
                   --(地面からの高さで抽出)------> /lidar_obstacles  (Nav2 の障害物)
+                  --(地面の点を少し奥へずらす)--> /lidar_clear      (Nav2 のクリア用)
+
+/lidar_clear について
+  Nav2 の costmap は LiDAR から点までの線上のセルを空きにするが, 点のあるセル自体は空きにしない.
+  床の上に一度残った誤検知 (自己位置のずれなどで付いた障害物) は, その床の点が届いても消えない.
+  そこで地面の点 (obstacle_min_height 未満) だけを, LiDAR から見た水平方向に
+  ground_clear_extend [m] 奥へずらして配信する. 床が見えているセルは毎回空きに戻る.
+  本当の障害物は同じ更新で付け直されるので消えない (Nav2 はクリアのあとに障害物を付ける)
   /unilidar/imu   --(frame_id だけ付け替え)-----> /imu              (Point-LIO)
 
 sim (sim_gazebo/filter_invalid_points.py) との違い
@@ -146,6 +154,7 @@ class LidarBridge(Node):
         imu_in = p('imu_in', '/unilidar/imu').value
         cloud_out = p('cloud_out', '/lidar').value
         obstacles_out = p('obstacles_out', '/lidar_obstacles').value
+        clear_out = p('clear_out', '/lidar_clear').value
         imu_out = p('imu_out', '/imu').value
         self.lidar_frame = p('lidar_frame', 'lidar_link').value
         self.imu_frame = p('imu_frame', 'imu_link').value
@@ -163,6 +172,12 @@ class LidarBridge(Node):
         self.self_min = np.array(p('self_box_min', [-0.4, -0.25, -0.2]).value, dtype=float)
         self.self_max = np.array(p('self_box_max', [0.4, 0.25, 0.4]).value, dtype=float)
         self.range_min = p('range_min', 0.3).value                  # LiDAR からの距離 [m]
+        # 障害物とクリア用の点の最小距離 [m]. 負なら range_min と同じ. Point-LIO 用 (range_min) とは別に
+        # 小さくして, 車体のすぐ近くの障害物も拾う (車体の点は self_box で除く)
+        self.obs_range_min = p('obstacle_range_min', -1.0).value
+        if self.obs_range_min < 0.0:
+            self.obs_range_min = self.range_min
+        self.ground_extend = p('ground_clear_extend', 0.1).value   # 地面の点をずらす距離 [m] (0 で無効)
 
         # IMU 加速度の 1 次ローパスのカットオフ [Hz] (0 以下で無効).
         # LiDAR の回転で車体が振動し, そのノイズを Point-LIO が積分して静止中も動いてしまうため
@@ -185,6 +200,7 @@ class LidarBridge(Node):
 
         self.pub = self.create_publisher(PointCloud2, cloud_out, 10)
         self.pub_obs = self.create_publisher(PointCloud2, obstacles_out, 10)
+        self.pub_clear = self.create_publisher(PointCloud2, clear_out, 10)
         self.pub_imu = self.create_publisher(Imu, imu_out, 50)
         self.create_subscription(PointCloud2, cloud_in, self.on_cloud, 10)
         self.create_subscription(Imu, imu_in, self.on_imu, 50)
@@ -322,8 +338,11 @@ class LidarBridge(Node):
         self.cloud_rx = (t, time.monotonic())
         pts = cloud_to_array(msg)
         xyz = np.column_stack([pts['x'], pts['y'], pts['z']]).astype(np.float64)
-        valid = np.isfinite(xyz).all(axis=1)
-        valid &= np.einsum('ij,ij->i', xyz, xyz) >= self.range_min ** 2
+        finite = np.isfinite(xyz).all(axis=1)
+        xyz[~finite] = 0.0
+        r2 = np.einsum('ij,ij->i', xyz, xyz)
+        valid = finite & (r2 >= self.range_min ** 2)
+        near_ok = finite & (r2 >= self.obs_range_min ** 2)    # 障害物とクリア用
 
         base = xyz @ self.rot.T + self.trans        # LiDAR 座標 -> base_link 座標
         in_self = np.all((base > self.self_min) & (base < self.self_max), axis=1)
@@ -338,8 +357,24 @@ class LidarBridge(Node):
             self.pub.publish(out)
 
         h = base[:, 2] - self.ground_z              # 地面からの高さ
-        obs = keep & (h > self.obstacle_min) & (h < self.obstacle_max)
+        near_keep = near_ok & ~in_self
+        obs = near_keep & (h > self.obstacle_min) & (h < self.obstacle_max)
         self.pub_obs.publish(make_cloud(msg, pts[obs], self.lidar_frame))
+        if self.pub_clear.get_subscription_count() > 0:
+            self.pub_clear.publish(self.clear_cloud(msg, pts, base, near_keep, h))
+
+    def clear_cloud(self, msg, pts, base, mask, h):
+        """Nav2 のクリア用の点群. 地面の点だけ LiDAR から水平方向に ground_clear_extend 奥へずらす."""
+        sel = pts[mask].copy()
+        if self.ground_extend > 0.0 and len(sel):
+            b = base[mask].copy()
+            ground = h[mask] <= self.obstacle_min
+            d = b[ground, :2] - self.trans[:2]
+            n = np.linalg.norm(d, axis=1, keepdims=True)
+            b[ground, :2] += d / np.maximum(n, 1e-6) * self.ground_extend
+            xyz = (b - self.trans) @ self.rot          # base_link 座標 -> LiDAR 座標
+            sel['x'], sel['y'], sel['z'] = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+        return make_cloud(msg, sel, self.lidar_frame)
 
 
 def main():
