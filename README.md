@@ -8,15 +8,37 @@ RC カーを走らせるためのリポジトリです。スマホのブラウ�
 もとは Docker イメージ用のリポジトリでしたが、今はロボットに直接入れて使う形を基本にしています。
 Docker イメージ (sim 含む) は[最後の節](#docker-で動かす-任意)で引き続き作れます。
 
+## 目次
+
+* [使い方の流れ](#使い方の流れ)
+* [中身](#中身) / [セットアップ](#セットアップ-ubuntu-2204--raspberry-pi) / [設定 (`robot_config`)](#設定-robot_config)
+* [スマホでモードを選んで起動する](#スマホでモードを選んで起動する-robot_launcher) /
+  [スマホから地図をタップして目的地を送る](#スマホから地図をタップして目的地を送る-robot_map--robot_goal-web)
+* [コマンドで起動する](#コマンドで起動する-robot_bringup--robot_goal) (Arduino を挿したら自動で起動する設定を含む)
+* [LiDAR から Arduino までの仕組みと調整](#lidar-から-arduino-までの仕組みと調整)
+* [走行キャリブレーション](#走行キャリブレーション-robot_operation-calibrate_drive)
+* [Point-LIO だけを動かす](#point-lio-だけを動かす) / [Point-LIO のバージョン](#point-lio-のバージョンについて)
+* [シミュレーション (Gazebo)](#シミュレーション-gazebo) / [Docker](#docker-で動かす-任意)
+
+## 使い方の流れ
+
+1. **入れる**: ロボット (Raspberry Pi など) で `./scripts/setup-raspi.sh l1` を実行する ([セットアップ](#セットアップ-ubuntu-2204--raspberry-pi))。
+2. **ロボットの設定を書く**: `src/common/robot_config/config/robots/rc_car.yaml` に LiDAR の取付と
+   ポート (`/dev/serial/by-id/...`) を書く。取付角度と地面の高さは `ros2 run lidar_bridge ground_check` で確かめる
+   ([設定](#設定-robot_config)、[仕組みと調整](#lidar-から-arduino-までの仕組みと調整))。
+3. **自動で起動するようにする**: `./scripts/install-autostart.sh l1` (Arduino を挿すとモード選択の画面が起動する)。
+4. **走行キャリブレーション**: スマホで `http://<IP>:8080` を開き、「キャリブレーション」を選んで計測し、結果を「使う」。
+5. **走らせる**: 「目的地設定の自走」を選び、地図をタップして目的地を送る。
+
 ## 中身
 
 | 場所 | 内容 |
 | --- | --- |
+| `src/common/robot_config/config/` | **全ノードの設定** (共通の `common.yaml` と、ロボットごとの `robots/<名前>.yaml`)。[下記](#設定-robot_config) |
 | `src/common/` | 全機種共通のパッケージ (下の表) |
 | `src/l1/`, `src/l2/` | LiDAR の機種ごとのパッケージ (ドライバなど) |
 | `src/sim/` | Gazebo のシミュレーション (`sim_gazebo`) |
 | `firmware/` | Arduino のスケッチ (`operator.ino`) |
-| `src/common/robot_config/config/` | **全ノードの設定** (共通の `common.yaml` と、ロボットごとの `robots/<名前>.yaml`)。[下記](#設定-robot_config) |
 | `scripts/` | セットアップ (`setup-raspi.sh`)、外部リポジトリの取得 (`fetch-external.sh`)、自動起動など |
 | `patches/` | 外部リポジトリに当てる、こちらの変更 |
 
@@ -87,7 +109,7 @@ source ~/.bashrc
   Point-LIO は時刻が戻ると `loop back` でデータを捨てるので、`timedatectl` で
   `System clock synchronized: yes` になってから起動してください。
 * L1 (`/dev/ttyUSB*`) と Arduino (`/dev/ttyACM*`) は挿す順で番号が変わることがあるので、
-  `/dev/serial/by-id/...` で指定するのが確実です。
+  `robots/<名前>.yaml` の `robot.lidar.port` / `robot.arduino_port` を `/dev/serial/by-id/...` にするのが確実です。
 
 ## 設定 (`robot_config`)
 
@@ -105,6 +127,10 @@ source ~/.bashrc
 * 使うロボットは launch 引数 `robot:=<名前>`、なければ環境変数 `ROBOT_NAME`、なければ `rc_car` です。
   新しいロボットは `robots/` にファイルを足します。
 * キャリブレーションの結果 (`~/drive_calib/.../summary.yaml`) は含めません。モード選択の画面で選ぶか `calibration_file:=` で渡します。
+* launch 引数の `lidar:=` / `lidar_port:=` / `arduino_port:=` / `web_port:=` で、その起動のときだけ設定を上書きできます。
+* LiDAR の機種ごとの Point-LIO の設定 (`point_lio_ros2/config/unilidar_<l1|l2>.yaml`) は外部パッケージの設定なので
+  そのまま土台にし、`common.yaml` の `nodes.point_lio` を上に重ねます。Gazebo のモデル (URDF など) と L2 の地図作り用の
+  `l2_bringup` の設定は対象外です。
 * 実際に渡る値は次のコマンドで確認できます。
 
 ```bash
@@ -113,9 +139,167 @@ ros2 run robot_config show obstacle_detector        # そのノードに渡る�
 ros2 run robot_config show nav2 --robot sim         # sim の Nav2 のパラメータ
 ```
 
-## 実機で Nav2 を動かす (`lidar_bridge` / `robot_operation`)
+## スマホでモードを選んで起動する (`robot_launcher`)
+
+スマホで `http://<IP>:8080` を開くと、モード選択の画面が出ます。モードを選ぶと、進み具合の円と
+待っている段階 (前のモードの停止 → LiDAR の点群 → 自己位置 → Nav2 → モードの画面) が表示され、
+準備ができたらモードの画面 (`http://<IP>:8081`) へ自動で移ります。モードの画面の「モード」ボタンで戻れます。
+
+| モード | 起動するもの |
+| --- | --- |
+| 目的地設定の自走 | `robot.launch.py` 一式 (LiDAR、Point-LIO + ZUPT、地図、Nav2、Arduino 変換、目的地の画面) |
+| キャリブレーション | LiDAR と Point-LIO (ZUPT なし) と、キャリブレーションの画面 (`calib_web`)。Nav2 と Arduino 変換は起動しない |
+| マップ自動生成の自走 | (準備中。探索ノードが未実装) |
+
+* キャリブレーションの画面では、ホイールベースと後輪軸から LiDAR までの距離を入れ、「周りに 3 m の空きがある」に
+  チェックしてから計測を始めます。`calibrate_drive` の出力が画面に流れ、中止ボタンで止められます。
+  計測中に画面との通信が 5 秒途切れると、計測は中止されます。
+* 計測結果 (`~/drive_calib/<日時>/summary.yaml`) は画面に一覧され、「使う」で選んだものが
+  `~/drive_calib/selected` に記録されます。次に「目的地設定の自走」を起動するときに `calibration_file:=` として渡ります。
+* モードは同時に 1 つだけ動きます (Arduino のポートの取り合いを防ぐ)。問題の切り分けのため、
+  LiDAR ドライバや Point-LIO も含めて、モードを選ぶたびに起動し直します (切り替えに 10〜20 秒ほど)。
+  起動し直すので、地図と自己位置はモードごとに最初からになります。
+* モードごとの出力は `~/robot_logs/<日時>_<モード>.log` に保存されます。起動に失敗したときは、
+  止まった段階とログの最後の部分が画面に出ます。
+* モードを止めるたびに、Point-LIO が保存した地図 (`PCD/scans.pcd`) を `~/robot_maps/<日時>_<モード>.pcd` に移します
+  (次のモードで上書きされないように)。
+* 自動起動 (`scripts/start_ros.sh`、`scripts/autostart/robot-bringup.sh`) はこの `launcher` を起動します。
+  モードを順に止める時間が要るので、サービスの `TimeoutStopSec` は 60 秒程度にしてください。
+* `launcher` のポートや保存先は `robot_config` の `nodes.launcher` から読みます。各モードにはロボット名 (`robot:=`) を渡します。
+
+```bash
+ros2 run robot_launcher launcher                                   # 手で起動する場合
+ros2 run robot_launcher launcher --ros-args -p token:=abcd -p launch_args:="dry_run:=true"
+```
+
+## スマホから地図をタップして目的地を送る (`robot_map` / `robot_goal web`)
+
+走りながら 2D 地図を作り、同じ Wi-Fi につないだスマホのブラウザでその地図をタップして目的地を送ります。
+2D 地図を作るのは `robot_map` だけで、Web 画面、RViz (`Map2D` 表示)、必要なら Nav2 がその `/map` を共有します。
+
+![LiDAR から地図・Web・走行までのデータの流れ](docs/images/data_flow.svg)
+
+線の色はデータの種類 (橙: 3D 点群、青: 2D 地図・経路、灰: IMU・オドメトリ・指令、緑: HTTP)、
+破線は任意またはファイル経由です。トピック名は `real.launch.py` で起動したときの実際の名前です。
+
+### 起動
+
+ふだんはモード選択の「目的地設定の自走」で起動し、`http://<IP>:8081` に自動で移ります。
+`robot.launch.py` を直接起動したときは `http://<IP>:8080` です (既定で `map:=true web:=true`。起動ログに
+`スマホで開く: http://192.168.x.x:8080` と出ます)。
+
+```bash
+ros2 launch robot_bringup robot.launch.py                        # 地図作り + Web
+ros2 launch robot_bringup robot.launch.py web_token:=abcd        # http://<IP>:8080/?key=abcd の人だけ操作できる
+ros2 launch robot_bringup robot.launch.py map_pcd:=$HOME/maps/scans.pcd   # 保存済みの地図から始める
+```
+
+単体で起動する場合:
+
+```bash
+ros2 launch robot_map map.launch.py                  # /cloud_registered -> /map
+ros2 run robot_goal web                              # /map を表示, ポート 8080
+ros2 run robot_goal web --ros-args -p port:=8082 -p token:=abcd
+```
+
+* Web サーバーはノードを動かしているマシンで開きます。Point-LIO と同じマシン
+  (ラズパイなど) で動かすと、点群を Wi-Fi 越しに送らずに済みます。
+* `ufw` などのファイアウォールを使っている場合はポートを開けます: `sudo ufw allow 8080/tcp`
+* スマホがインターネットにつながっていなくても動きます (画面は全部このノードから配信)。
+* `web_token` を付けないと、同じ Wi-Fi にいる人なら誰でもロボットを動かせます。
+
+### 画面の操作
+
+| 操作 | 内容 |
+| --- | --- |
+| 地図をタップ | 目的地の候補 (橙) を置く。向きは今の向きのまま |
+| 候補の印からドラッグ | 到着時の向きを指定する |
+| 1 本指でドラッグ / 2 本指で広げる・縮める | 地図の移動 / 拡大・縮小 (移動すると「追従」が切れる) |
+| この地点へ送信 | 候補を Nav2 に送る (送るまでは走り出さない) |
+| 停止 (取消) | 走行中のゴールを取り消す |
+| 追従 / 全体 | ロボットを中心に表示 / 観測済みの範囲を全部表示 |
+| 障害物を消す | Nav2 の costmap に残った障害物 (誤検知) をすべて消す。見えている障害物はすぐ付き直る |
+| モード | モード選択の画面に戻る (モード選択から起動したときだけ出る) |
+
+上の帯に、地図・現在地の受信状況、Nav2 の接続、走行状態と残り距離が出ます。
+
+Nav2 の costmap を見るときは、表示する地図を差し替えた 2 つ目の Web サーバーを起動します
+(`http://<IP>:8090`)。黒が障害物、赤がロボットの中心が入るとぶつかる範囲、
+オレンジが障害物から離れたい範囲 (濃いほど近い) です。
+
+```bash
+ros2 run robot_goal web --ros-args -r __node:=costmap_web -p map_topic:=/global_costmap/costmap -p port:=8090
+```
+
+### 地図の作り方 (`robot_map`)
+
+Point-LIO の `/cloud_registered` (map 座標の点群、毎スキャン) を base_link 座標に直して高さで分け、
+5 cm 四方のセルごとに数えます。
+
+* 床から ±`floor_tolerance` (5 cm) の点 → 床、`obstacle_min_height`〜`obstacle_max_height` の点 → 障害物。
+  `ground_z` と障害物の高さは `obstacle_detector` と同じ値 (`robot_config` から) を使います。
+* 障害物の点が 3 回以上で、かつ床の点の半分以上ならそのセルは占有、床だけなら空き、どちらも無ければ未知です。
+  人が横切った跡は、その後に床がたくさん見えれば空きに戻ります。
+* ロボットから `max_range` (15 m) より遠い点は使いません。
+* `/map` は変化があったときに 1 秒ごとに配信します (transient_local なので、後から起動したノードも受け取れます)。
+* `pcd_file` を指定すると、保存済みの地図 (Point-LIO の `scans.pcd` など) を最初に読み込みます。
+  床の高さは点の高さの分布から自動で推定します (`pcd_ground_z` で指定も可)。
+* Nav2 は今のところ `/map` を使いません (global costmap は rolling window のまま)。図の Nav2 への `/map` は将来の案です。
+
+
+## コマンドで起動する (`robot_bringup` / `robot_goal`)
+
+モード選択を使わずに、ターミナルから起動する方法です。LiDAR ドライバ、lidar_bridge + 障害物の検知 + Point-LIO、
+Nav2、Arduino 変換、2D 地図 (`robot_map`)、スマホ用の Web サーバー (`robot_goal web`) を 1 つのコマンドで起動します。
+
+```bash
+ros2 launch robot_bringup robot.launch.py                       # ロボットは $ROBOT_NAME (無ければ rc_car)
+ros2 launch robot_bringup robot.launch.py calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
+ros2 launch robot_bringup robot.launch.py lidar_port:=/dev/ttyUSB1   # 設定の一時的な上書き (lidar / lidar_port / arduino_port / web_port)
+ros2 launch robot_bringup robot.launch.py dry_run:=true         # Arduino に送らずログだけ
+ros2 launch robot_bringup robot.launch.py nav:=false operation:=false   # 地図作り・確認だけ
+```
+
+* `driver` / `point_lio` / `nav` / `operation` / `map` / `web` / `rviz` を `false` にすると
+  その部分を起動しません (`rviz` は既定で `false`。PC 側で開く)。
+* Nav2 は Point-LIO の TF が出始めるのを待つため `bringup.nav_delay` 秒 (既定 5) 後に起動します。
+
+目的地は別のターミナルから送ります (座標は `map`、Point-LIO の起動位置が原点)。
+
+```bash
+ros2 run robot_goal goal 3.0 1.5        # (3.0, 1.5) へ。向きは今のまま
+ros2 run robot_goal goal 3.0 1.5 90     # 到着時の向き [deg]
+ros2 run robot_goal goal --rel 2.0 0    # 今の位置・向きから見て前に 2 m
+ros2 run robot_goal goal                # 対話モード (h でヘルプ, c で取り消し, p で現在地)
+```
+
+到着・失敗まで残り距離を表示し、Ctrl-C でゴールを取り消して終了します。
+
+### Arduino を挿したら自動で起動する (`install-autostart.sh`)
+
+Arduino (`/dev/ttyACM0`) が現れたらモード選択の画面 (`robot_launcher` の `launcher`) を起動し、抜いたら止めます。
+udev が systemd のサービス `robot-bringup.service` を起動する仕組みです。
+
+```bash
+./scripts/install-autostart.sh l1          # sudo は付けない (ロボットを動かすユーザーで実行). L2 なら l2
+./scripts/install-autostart.sh uninstall   # 元に戻す
+```
+
+* 設定は `/etc/default/robot-bringup` に書きます (ワークスペースの場所、`ROS_DOMAIN_ID`、使うロボット `ROBOT_NAME`、
+  launch 引数 `ROBOT_LAUNCH_ARGS="calibration_file:=... web_token:=..."` など)。ポートなどロボットの設定は
+  `robot_config` の `robots/<名前>.yaml` に書きます (`ARDUINO_PORT` は udev が監視するデバイスだけに使う)。
+  変更したら `sudo systemctl restart robot-bringup` するか、Arduino を挿し直します。
+* ログは `journalctl -u robot-bringup -f`、状態は `systemctl status robot-bringup` で見ます。
+* systemd から起動したプロセスは `~/.bashrc` を読みません。そのため
+  `scripts/autostart/robot-bringup.sh` が ROS とワークスペースの `setup.bash` を読み込んでから起動します。
+* 止めるときは `launcher` に停止の合図が届き、動いているモードを順に止めてから終わります
+  (最大 30 秒ほど。サービスの `TimeoutStopSec` は 60 秒)。
+* 起動に失敗したら 10 秒後にやり直します (LiDAR やネットワークの準備がまだのとき)。
+
+## LiDAR から Arduino までの仕組みと調整
 
 sim と同じトピック・TF にそろえて、Point-LIO → Nav2 → Arduino の順につなぎます。
+ふだんは上の一括起動やモード選択で起動しますが、1 つずつ起動することもできます。
 
 | ノード | 受け取る | 出す |
 | --- | --- | --- |
@@ -163,9 +347,10 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
   外した点は `/lidar_slope` に出るので rviz で確認できます。傾きは車体に対する値です。
 * 床が障害物として扱われる (Nav2 の経路が作れない) ときは、取付角度か `ground_z` が実機とずれています。
   平らな床に止めて LiDAR ドライバだけ起動し、`ros2 run lidar_bridge ground_check` を実行すると、
-  床の点から `lidar_pitch_deg` / `lidar_roll_deg` / `ground_z` を推定して今の値と並べて表示します。
+  床の点から取付の `pitch_deg` / `roll_deg` と地面の高さを推定し、`robots/<名前>.yaml` の今の値
+  (`robot.lidar.mount`、`robot.body.ground_z`) と並べて表示します。
   ロボットから 1 m 以内に障害物の点があれば (車体や取付台が写っている)、
-  それを含む `self_box_min` / `self_box_max` の例も表示します。
+  それを含む `robot.body.self_box_min` / `self_box_max` の例も表示します。
 * `cmd_vel_converter` は Twist を `tan(δ) = L·ω / v` で舵角に、`sin(δ) = K·sin(φ − φ0)` でサーボ角に、
   `throttle = deadband + v / gain` でスロットルに変換します。値は `calibration_file`
   (calibrate_drive の `summary.yaml`) か、ロボットの設定 (`robots/<名前>.yaml` の `nodes.cmd_vel_converter`) から読みます。
@@ -189,183 +374,34 @@ ros2 run robot_operation drive_forward --speed 0.3 --duration 5 --bag ~/bags/for
 * Docker のコンテナで動かすときは、記録先をコンテナを終了しても消えない、マウントしている場所 (`/opt/common_ws/src` など) にします。
 * Ctrl-C で中止すると速度 0 を送ってから終了します。
 * Point-LIO が作った地図は、real.launch.py を Ctrl-C で終了したときに
-  `src/common/point_lio_ros2/PCD/scans.pcd` に保存されます。
+  `src/common/point_lio_ros2/PCD/scans.pcd` に保存されます (モード選択から起動したときは `~/robot_maps/` に移ります)。
 
-## 実機の走行キャリブレーション (`robot_operation calibrate_drive`)
+## 走行キャリブレーション (`robot_operation calibrate_drive`)
 
 実機を自動で走らせて、次の2つの対応を Point-LIO のオドメトリから計測します。
 
 * スロットル (operator.ino の -100..100) と速度 [m/s]
 * サーボ角 [deg] と前輪の舵角 [deg]
 
-```bash
-# ターミナル1, 2: LiDAR ドライバと Point-LIO (車体は静止させておく)
-ros2 launch unitree_lidar_ros2 launch.py
-ros2 launch point_lio mapping_unilidar_l2.launch.py rviz:=false
+ふだんはスマホのモード選択で「キャリブレーション」を選んで計測します ([上記](#スマホでモードを選んで起動する-robot_launcher))。
+ホイールベースと後輪軸から LiDAR までの距離の初期値は、ロボットの設定から計算した値が画面に入ります。
+ターミナルから計測する場合:
 
-# ターミナル3: 計測 (半径 3 m ほどの空きが必要)
+```bash
+# ターミナル1: LiDAR ドライバと Point-LIO だけ (ZUPT なし。車体は静止させておく)
+ros2 launch robot_bringup robot.launch.py nav:=false operation:=false map:=false web:=false zupt:=false
+
+# ターミナル2: 計測 (半径 3 m ほどの空きが必要). 値は ros2 run robot_config show calib_web で確認できる
 ros2 run robot_operation calibrate_drive --wheelbase <ホイールベース[m]> --lidar-x <後輪軸からLiDARまでの前方向距離[m]>
 ```
 
 * 手順は2段階です。まずステアリングを中央にして各スロットルで直進し、同じだけ後退して戻ります。次に各サーボ角で、一定のスロットルのまま1周（または時間切れ）するまで旋回します。
 * LiDAR は前に 30 度傾いていても、X 軸が前を向いていれば問題ありません。機体 X 軸を水平面に投影した向きをヨー角として使います。
 * 舵角は自転車モデル `tan(δ) = L / R` で求めます。旋回半径 R は、LiDAR の位置から後輪軸中心の値に換算します (`--lidar-x`)。
-* 結果は `~/drive_calib/<日時>/` に保存されます。生データ `raw.csv`, `segments.csv`、区間ごとの結果 `throttle_result.csv`, `steering_result.csv`、フィット結果 `summary.yaml` の5つです。
+* 結果は `~/drive_calib/<日時>/` に保存されます (`robot_config` には含めず、起動時に `calibration_file:=` で渡します)。生データ `raw.csv`, `segments.csv`、区間ごとの結果 `throttle_result.csv`, `steering_result.csv`、フィット結果 `summary.yaml` の5つです。
 * `--analyze <ディレクトリ>` を付けると走行せず、記録済みのデータを別の `--wheelbase` / `--lidar-x` で解析し直せます。
 * Ctrl-C、またはオドメトリが 0.5 秒途絶えた場合は、スロットル 0・サーボ中央を送って止めます。ただし Arduino 側にはタイムアウトがないので、USB が抜けたときに備えてすぐ止められる状態で使ってください。
 * 主なオプション: `--throttles 15,20,30`, `--servos 40,55,70,85,100,115,130`, `--steer-throttle 25`, `--max-distance 3.0`, `--pause` (区間ごとに Enter 待ち)。一覧は `--help` で確認できます。
-
-## 一括起動と目的地の指定 (`robot_bringup` / `robot_goal`)
-
-LiDAR ドライバ、lidar_bridge + Point-LIO、Nav2、Arduino 変換、2D 地図 (`robot_map`)、
-スマホ用の Web サーバー (`robot_goal web`) を 1 つのコマンドで起動します。
-
-```bash
-ros2 launch robot_bringup robot.launch.py                       # ロボットは $ROBOT_NAME (無ければ rc_car)
-ros2 launch robot_bringup robot.launch.py calibration_file:=$HOME/drive_calib/<日時>/summary.yaml
-ros2 launch robot_bringup robot.launch.py lidar_port:=/dev/ttyUSB1   # 設定の一時的な上書き (lidar / lidar_port / arduino_port / web_port)
-ros2 launch robot_bringup robot.launch.py dry_run:=true         # Arduino に送らずログだけ
-ros2 launch robot_bringup robot.launch.py nav:=false operation:=false   # 地図作り・確認だけ
-```
-
-* `driver` / `point_lio` / `nav` / `operation` / `map` / `web` / `rviz` を `false` にすると
-  その部分を起動しません (`rviz` は既定で `false`。PC 側で開く)。
-* Nav2 は Point-LIO の TF が出始めるのを待つため `bringup.nav_delay` 秒 (既定 5) 後に起動します。
-
-目的地は別のターミナルから送ります (座標は `map`、Point-LIO の起動位置が原点)。
-
-```bash
-ros2 run robot_goal goal 3.0 1.5        # (3.0, 1.5) へ。向きは今のまま
-ros2 run robot_goal goal 3.0 1.5 90     # 到着時の向き [deg]
-ros2 run robot_goal goal --rel 2.0 0    # 今の位置・向きから見て前に 2 m
-ros2 run robot_goal goal                # 対話モード (h でヘルプ, c で取り消し, p で現在地)
-```
-
-到着・失敗まで残り距離を表示し、Ctrl-C でゴールを取り消して終了します。
-
-### Arduino を挿したら自動で起動する (`install-autostart.sh`)
-
-Arduino (`/dev/ttyACM0`) が現れたら上の `robot.launch.py` を起動し、抜いたら止めます。
-udev が systemd のサービス `robot-bringup.service` を起動する仕組みです。
-
-```bash
-./scripts/install-autostart.sh l2          # sudo は付けない (ロボットを動かすユーザーで実行). L1 なら l1
-./scripts/install-autostart.sh uninstall   # 元に戻す
-```
-
-* 設定は `/etc/default/robot-bringup` に書きます (ワークスペースの場所、`ROS_DOMAIN_ID`、使うロボット `ROBOT_NAME`、
-  launch 引数 `ROBOT_LAUNCH_ARGS="calibration_file:=... web_token:=..."` など)。ポートなどロボットの設定は
-  `robot_config` の `robots/<名前>.yaml` に書きます (`ARDUINO_PORT` は udev が監視するデバイスだけに使う)。
-  変更したら `sudo systemctl restart robot-bringup` するか、Arduino を挿し直します。
-* ログは `journalctl -u robot-bringup -f`、状態は `systemctl status robot-bringup` で見ます。
-* systemd から起動したプロセスは `~/.bashrc` を読みません。そのため
-  `scripts/autostart/robot-bringup.sh` が ROS とワークスペースの `setup.bash` を読み込んでから起動します。
-* 止めるときは `ros2 launch` にだけ SIGINT を送り、各ノードは launch が順に止めます (Ctrl-C と同じ)。
-* 起動に失敗したら 10 秒後にやり直します (LiDAR やネットワークの準備がまだのとき)。
-
-## スマホでモードを選んで起動する (`robot_launcher`)
-
-スマホで `http://<IP>:8080` を開くと、モード選択の画面が出ます。モードを選ぶと、進み具合の円と
-待っている段階 (前のモードの停止 → LiDAR の点群 → 自己位置 → Nav2 → モードの画面) が表示され、
-準備ができたらモードの画面 (`http://<IP>:8081`) へ自動で移ります。モードの画面の「モード」ボタンで戻れます。
-
-| モード | 起動するもの |
-| --- | --- |
-| 目的地設定の自走 | `robot.launch.py` 一式 (LiDAR、Point-LIO + ZUPT、地図、Nav2、Arduino 変換、目的地の画面) |
-| キャリブレーション | LiDAR と Point-LIO (ZUPT なし) と、キャリブレーションの画面 (`calib_web`)。Nav2 と Arduino 変換は起動しない |
-| マップ自動生成の自走 | (準備中。探索ノードが未実装) |
-
-* キャリブレーションの画面では、ホイールベースと後輪軸から LiDAR までの距離を入れ、「周りに 3 m の空きがある」に
-  チェックしてから計測を始めます。`calibrate_drive` の出力が画面に流れ、中止ボタンで止められます。
-  計測中に画面との通信が 5 秒途切れると、計測は中止されます。
-* 計測結果 (`~/drive_calib/<日時>/summary.yaml`) は画面に一覧され、「使う」で選んだものが
-  `~/drive_calib/selected` に記録されます。次に「目的地設定の自走」を起動するときに `calibration_file:=` として渡ります。
-* モードは同時に 1 つだけ動きます (Arduino のポートの取り合いを防ぐ)。問題の切り分けのため、
-  LiDAR ドライバや Point-LIO も含めて、モードを選ぶたびに起動し直します (切り替えに 10〜20 秒ほど)。
-  起動し直すので、地図と自己位置はモードごとに最初からになります。
-* モードごとの出力は `~/robot_logs/<日時>_<モード>.log` に保存されます。起動に失敗したときは、
-  止まった段階とログの最後の部分が画面に出ます。
-* モードを止めるたびに、Point-LIO が保存した地図 (`PCD/scans.pcd`) を `~/robot_maps/<日時>_<モード>.pcd` に移します
-  (次のモードで上書きされないように)。
-* 自動起動 (`scripts/start_ros.sh`、`scripts/autostart/robot-bringup.sh`) はこの `launcher` を起動します。
-  モードを順に止める時間が要るので、サービスの `TimeoutStopSec` は 60 秒程度にしてください。
-
-```bash
-ros2 run robot_launcher launcher                                   # 手で起動する場合
-ros2 run robot_launcher launcher --ros-args -p token:=abcd -p launch_args:="dry_run:=true"
-```
-
-## スマホから地図をタップして目的地を送る (`robot_map` / `robot_goal web`)
-
-走りながら 2D 地図を作り、同じ Wi-Fi につないだスマホのブラウザでその地図をタップして目的地を送ります。
-2D 地図を作るのは `robot_map` だけで、Web 画面、RViz (`Map2D` 表示)、必要なら Nav2 がその `/map` を共有します。
-
-![LiDAR から地図・Web・走行までのデータの流れ](docs/images/data_flow.svg)
-
-線の色はデータの種類 (橙: 3D 点群、青: 2D 地図・経路、灰: IMU・オドメトリ・指令、緑: HTTP)、
-破線は任意またはファイル経由です。トピック名は `real.launch.py` で起動したときの実際の名前です。
-
-### 起動
-
-`robot.launch.py` で一緒に起動します (既定で `map:=true web:=true`)。起動ログに
-`スマホで開く: http://192.168.x.x:8080` と出るので、そのアドレスをスマホで開きます。
-
-```bash
-ros2 launch robot_bringup robot.launch.py                        # 地図作り + Web
-ros2 launch robot_bringup robot.launch.py web_token:=abcd        # http://<IP>:8080/?key=abcd の人だけ操作できる
-ros2 launch robot_bringup robot.launch.py map_pcd:=$HOME/maps/scans.pcd   # 保存済みの地図から始める
-```
-
-単体で起動する場合:
-
-```bash
-ros2 launch robot_map map.launch.py                  # /cloud_registered -> /map
-ros2 run robot_goal web                              # /map を表示, ポート 8080
-ros2 run robot_goal web --ros-args -p port:=8082 -p token:=abcd
-```
-
-* Web サーバーはノードを動かしているマシンで開きます。Point-LIO と同じマシン
-  (ラズパイなど) で動かすと、点群を Wi-Fi 越しに送らずに済みます。
-* `ufw` などのファイアウォールを使っている場合はポートを開けます: `sudo ufw allow 8080/tcp`
-* スマホがインターネットにつながっていなくても動きます (画面は全部このノードから配信)。
-* `web_token` を付けないと、同じ Wi-Fi にいる人なら誰でもロボットを動かせます。
-
-### 画面の操作
-
-| 操作 | 内容 |
-| --- | --- |
-| 地図をタップ | 目的地の候補 (橙) を置く。向きは今の向きのまま |
-| 候補の印からドラッグ | 到着時の向きを指定する |
-| 1 本指でドラッグ / 2 本指で広げる・縮める | 地図の移動 / 拡大・縮小 (移動すると「追従」が切れる) |
-| この地点へ送信 | 候補を Nav2 に送る (送るまでは走り出さない) |
-| 停止 (取消) | 走行中のゴールを取り消す |
-| 追従 / 全体 | ロボットを中心に表示 / 観測済みの範囲を全部表示 |
-
-上の帯に、地図・現在地の受信状況、Nav2 の接続、走行状態と残り距離が出ます。
-
-Nav2 の costmap を見るときは、表示する地図を差し替えた 2 つ目の Web サーバーを起動します
-(`http://<IP>:8090`)。黒が障害物、赤がロボットの中心が入るとぶつかる範囲、
-オレンジが障害物から離れたい範囲 (濃いほど近い) です。
-
-```bash
-ros2 run robot_goal web --ros-args -r __node:=costmap_web -p map_topic:=/global_costmap/costmap -p port:=8090
-```
-
-### 地図の作り方 (`robot_map`)
-
-Point-LIO の `/cloud_registered` (map 座標の点群、毎スキャン) を base_link 座標に直して高さで分け、
-5 cm 四方のセルごとに数えます。
-
-* 床から ±`floor_tolerance` (5 cm) の点 → 床、`obstacle_min_height`〜`obstacle_max_height` の点 → 障害物。
-  `ground_z` と障害物の高さは `obstacle_detector` と同じ値 (`robot_config` から) を使います。
-* 障害物の点が 3 回以上で、かつ床の点の半分以上ならそのセルは占有、床だけなら空き、どちらも無ければ未知です。
-  人が横切った跡は、その後に床がたくさん見えれば空きに戻ります。
-* ロボットから `max_range` (15 m) より遠い点は使いません。
-* `/map` は変化があったときに 1 秒ごとに配信します (transient_local なので、後から起動したノードも受け取れます)。
-* `pcd_file` を指定すると、保存済みの地図 (Point-LIO の `scans.pcd` など) を最初に読み込みます。
-  床の高さは点の高さの分布から自動で推定します (`pcd_ground_z` で指定も可)。
-* Nav2 は今のところ `/map` を使いません (global costmap は rolling window のまま)。
-
 
 ## Point-LIO だけを動かす
 
@@ -432,10 +468,28 @@ Unitree 公式の [unitreerobotics/point_lio_unilidar](https://github.com/unitre
 Livox AVIA の `CustomMsg` 入力経路は上流でもコメントアウトされており
 (`livox_ros_driver2` を含めていないため)、標準の `sensor_msgs/PointCloud2` 経路のみが有効です。
 
+## シミュレーション (Gazebo)
+
+`src/sim/sim_gazebo` に Gazebo (Ignition) の車体とワールドがあります。設定は `robot_config` の `robots/sim.yaml` を使います
+(Docker の sim イメージでは `ROBOT_NAME=sim` になっています)。
+
+```bash
+ros2 launch sim_gazebo bridge.launch.py                       # Gazebo、ブリッジ、点群の変換、障害物の検知、車体
+ros2 launch robot_navigation navigation.launch.py robot:=sim  # Nav2 (sim の速度・footprint、Gazebo の時刻)
+```
+
+* `filter_invalid_points` が Gazebo の点群から無効な点と自車体の点を除き、Point-LIO 用の time を付けて `/lidar` に出します。
+  障害物の判定は実機と同じ `obstacle_detector` です。
+* Point-LIO は `/lidar` と `/imu` を、Gazebo の時刻で読ませて起動します
+  (例 `ros2 run point_lio pointlio_mapping --ros-args --params-file <unilidar_l2.yaml> -p common.lid_topic:=/lidar -p common.imu_topic:=/imu -p use_sim_time:=true`)。
+* ワールドの作り方は `src/sim/sim_gazebo/readme.md` にあります。
+
 ## Docker で動かす (任意)
 
 Docker イメージは L1 / L2 / sim (Gazebo) の 3 種類です。ビルドの前に外部リポジトリを取得しておきます
 (イメージには `src/` の中身がそのまま入るため。GitHub Actions のビルドでは自動で実行します)。
+
+sim のイメージでは環境変数 `ROBOT_NAME=sim` が入っているので、`robot:=` を付けなくても sim の設定を使います。
 
 ```bash
 ./scripts/fetch-external.sh
@@ -466,6 +520,16 @@ This project utilizes and depends on the following open-source software:
   * **Source:** [hku-mars/Point-LIO](https://github.com/hku-mars/Point-LIO),
     [dfloreaa/point_lio_ros2](https://github.com/dfloreaa/point_lio_ros2),
     [unitreerobotics/point_lio_unilidar](https://github.com/unitreerobotics/point_lio_unilidar)
+
+* **Unilidar SDK / SDK2** (`src/l1/unilidar_sdk`, `src/l2/unilidar_sdk2`)
+  * **License:** [BSD 3-Clause License](https://opensource.org/licenses/BSD-3-Clause) (同梱の `LICENSE`。`package.xml` には GPLv3 と書かれています)
+  * **Source:** [unitreerobotics/unilidar_sdk](https://github.com/unitreerobotics/unilidar_sdk),
+    [unitreerobotics/unilidar_sdk2](https://github.com/unitreerobotics/unilidar_sdk2)
+
+* **lidar_localization_ros2 / ndt_omp_ros2** (`src/l2/`)
+  * **License:** [BSD 2-Clause License](https://opensource.org/licenses/BSD-2-Clause)
+  * **Source:** [rsasaki0109/lidar_localization_ros2](https://github.com/rsasaki0109/lidar_localization_ros2),
+    [rsasaki0109/ndt_omp_ros2](https://github.com/rsasaki0109/ndt_omp_ros2)
 
 * **Gazebo Classic / gazebo_ros_pkgs**
   * **License:** [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)

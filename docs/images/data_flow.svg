@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 960" width="980" height="960" role="img" aria-label="LiDAR の点群がドライバ、lidar_bridge、Point-LIO を通って 3D 点群になり、robot_map が 2D 地図 /map にして Web ノード、RViz、Nav2 に配る。スマホは HTTP で地図を受け取り、タップした目的地を Web ノード経由で Nav2 に送る。">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 960" width="980" height="960" role="img" aria-label="LiDAR の点群がドライバ、lidar_bridge、Point-LIO を通って 3D 点群になり、robot_map が 2D 地図 /map にして Web ノードと RViz に配る。obstacle_detector は lidar_bridge の点群から Nav2 の障害物を作る。スマホは HTTP で地図を受け取り、タップした目的地を Web ノード経由で Nav2 に送る。">
 <style>
 svg { --bg:#ffffff; --surface:#ffffff; --fg:#1d232b; --muted:#5b6573; --line:#9aa4b1;
   --c3d:#c4520f; --c2d:#1769c2; --cot:#6b7584; --chttp:#2a8a3e; --new:#7a3fc4; --new-bg:#f3edfb; }
@@ -43,8 +43,6 @@ text { font-family: "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", "Yu Got
 <text x="74" y="128" class="sub">HTTP (Wi-Fi)</text>
 <line x1="24" y1="146" x2="64" y2="146" class="e ot opt"/>
 <text x="74" y="150" class="sub">任意・ファイル経由</text>
-<rect x="24" y="168" width="40" height="18" rx="4" class="box new"/>
-<text x="74" y="181" class="sub">今回追加するノード</text>
 </g>
 <!-- ===== 線 ===== -->
         <!-- LiDAR -> ドライバ -->
@@ -67,10 +65,16 @@ text { font-family: "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", "Yu Got
         <text x="440" y="372" class="topic">/imu</text>
         <text x="440" y="388" class="kind ko">IMU</text>
 
-        <!-- lidar_bridge -> Nav2 -->
-        <polyline points="500,300 910,300 910,578" class="e d3" marker-end="url(#m3)"/>
-        <text x="705" y="290" class="topic" text-anchor="middle">/lidar, /lidar_obstacles</text>
-        <text x="705" y="318" class="kind k3" text-anchor="middle">3D 点群 (障害物の検出)</text>
+        <!-- lidar_bridge -> obstacle_detector -->
+        <line x1="500" y1="308" x2="758" y2="308" class="e d3" marker-end="url(#m3)"/>
+        <text x="629" y="298" class="topic" text-anchor="middle">/lidar_full</text>
+        <text x="629" y="326" class="kind k3" text-anchor="middle">3D 点群</text>
+
+        <!-- obstacle_detector -> Nav2 -->
+        <line x1="900" y1="336" x2="900" y2="578" class="e d3" marker-end="url(#m3)"/>
+        <text x="890" y="372" class="topic" text-anchor="end">/lidar_obstacles</text>
+        <text x="890" y="388" class="topic" text-anchor="end">/lidar_clear</text>
+        <text x="890" y="404" class="kind k3" text-anchor="end">障害物・クリア用の点群</text>
 
         <!-- Point-LIO -> Nav2 (オドメトリ) -->
         <polyline points="500,448 810,448 810,578" class="e ot" marker-end="url(#mo)"/>
@@ -144,7 +148,11 @@ text { font-family: "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", "Yu Got
 
         <rect x="300" y="280" width="200" height="56" rx="6" class="box"/>
         <text x="400" y="304" class="name" text-anchor="middle">lidar_bridge</text>
-        <text x="400" y="322" class="sub" text-anchor="middle">トピック名・障害物の切り出し</text>
+        <text x="400" y="322" class="sub" text-anchor="middle">トピック名・座標の付け替え</text>
+
+        <rect x="760" y="280" width="200" height="56" rx="6" class="box"/>
+        <text x="860" y="304" class="name" text-anchor="middle">obstacle_detector</text>
+        <text x="860" y="322" class="sub" text-anchor="middle">高さ・坂で障害物を判定</text>
 
         <rect x="300" y="420" width="200" height="56" rx="6" class="box"/>
         <text x="400" y="444" class="name" text-anchor="middle">Point-LIO</text>
@@ -154,23 +162,21 @@ text { font-family: "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", "Yu Got
         <text x="106" y="444" class="name" text-anchor="middle">scans.pcd</text>
         <text x="106" y="462" class="sub" text-anchor="middle">保存された 3D 地図</text>
 
-        <rect x="300" y="580" width="200" height="56" rx="6" class="box new"/>
+        <rect x="300" y="580" width="200" height="56" rx="6" class="box"/>
         <text x="400" y="604" class="name" text-anchor="middle">robot_map</text>
         <text x="400" y="622" class="sub" text-anchor="middle">3D 点群 → 2D 地図</text>
-        <text x="492" y="574" class="badge" text-anchor="end">新規</text>
 
         <rect x="20" y="740" width="172" height="56" rx="6" class="box"/>
         <text x="106" y="764" class="name" text-anchor="middle">RViz2</text>
         <text x="106" y="782" class="sub" text-anchor="middle">/map を表示</text>
 
-        <rect x="300" y="740" width="200" height="56" rx="6" class="box new"/>
+        <rect x="300" y="740" width="200" height="56" rx="6" class="box"/>
         <text x="400" y="764" class="name" text-anchor="middle">robot_goal web</text>
-        <text x="400" y="782" class="sub" text-anchor="middle">HTTP :8080 · TF で現在地</text>
-        <text x="492" y="734" class="badge" text-anchor="end">新規</text>
+        <text x="400" y="782" class="sub" text-anchor="middle">HTTP · TF で現在地</text>
 
         <rect x="300" y="890" width="200" height="56" rx="6" class="box"/>
         <text x="400" y="914" class="name" text-anchor="middle">スマホのブラウザ</text>
-        <text x="400" y="932" class="sub" text-anchor="middle">http://&lt;IP&gt;:8080</text>
+        <text x="400" y="932" class="sub" text-anchor="middle">http://&lt;IP&gt;:8081 (モード選択から)</text>
 
         <rect x="760" y="580" width="200" height="60" rx="6" class="box"/>
         <text x="860" y="606" class="name" text-anchor="middle">Nav2</text>
@@ -182,5 +188,5 @@ text { font-family: "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", "Yu Got
 
         <rect x="760" y="890" width="200" height="56" rx="6" class="box"/>
         <text x="860" y="914" class="name" text-anchor="middle">Arduino</text>
-        <text x="860" y="932" class="sub" text-anchor="middle">サーボ・ESC</text>
+        <text x="860" y="932" class="sub" text-anchor="middle">サーボ・モータードライバ</text>
       </svg>
