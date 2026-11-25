@@ -1,0 +1,382 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 75e0b30..da06d29 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -42,6 +42,7 @@ find_package(rclpy REQUIRED)
+ find_package(geometry_msgs REQUIRED)
+ find_package(nav_msgs REQUIRED)
+ find_package(sensor_msgs REQUIRED)
++find_package(std_msgs REQUIRED)
+ find_package(pcl_ros REQUIRED)
+ find_package(pcl_conversions REQUIRED)
+ find_package(tf2_ros REQUIRED)
+@@ -75,6 +76,7 @@ ament_target_dependencies(pointlio_mapping
+         geometry_msgs
+         nav_msgs
+         sensor_msgs
++        std_msgs
+         pcl_ros
+         pcl_conversions
+         tf2_ros
+diff --git a/config/unilidar_l1.yaml b/config/unilidar_l1.yaml
+index 3d868c5..f672652 100644
+--- a/config/unilidar_l1.yaml
++++ b/config/unilidar_l1.yaml
+@@ -35,7 +35,8 @@
+             acc_cov_input: 0.1 # for IMU as input model
+             plane_thr: 0.1 # 0.05, the threshold for plane criteria, the smaller, the flatter a plane
+             match_s: 81.0
+-            fov_degree: 180.0
++            #fov_degree: 180.0
++            fov_degree: 360.0
+             det_range: 100.0
+             gravity_align: true # true to align the z axis of world frame with the direction of gravity, and the gravity direction should be specified below
+             gravity: [0.0, 0.0, -9.810] # [0.0, 9.810, 0.0] # gravity to be aligned
+@@ -48,7 +49,8 @@
+                           0.0, 0.0, 1.0 ] # ulhk 4 utbm 3
+ 
+         odometry: 
+-            publish_odometry_without_downsample: true  
++            publish_odometry_without_downsample: false  
++            #publish_odometry_without_downsample: false
+ 
+         publish:
+             path_en: true                 # false: close the path output
+@@ -58,4 +60,4 @@
+         pcd_save:
+             pcd_save_en: true       # save map to pcd file
+             interval: -1            # how many LiDAR frames saved in each pcd file; 
+-                                        # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+\ No newline at end of file
++                                        # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+diff --git a/config/unilidar_l1.yaml.bak b/config/unilidar_l1.yaml.bak
+new file mode 100644
+index 0000000..3d868c5
+--- /dev/null
++++ b/config/unilidar_l1.yaml.bak
+@@ -0,0 +1,61 @@
++/**:
++    ros__parameters:
++        common:
++            lid_topic: "/unilidar/cloud" 
++            imu_topic: "/unilidar/imu" 
++            con_frame: false # true: if you need to combine several LiDAR frames into one
++            con_frame_num: 1 # the number of frames combined
++            cut_frame: false # true: if you need to cut one LiDAR frame into several subframes
++            cut_frame_time_interval: 0.1 # should be integral fraction of 1 / LiDAR frequency   
++            time_lag_imu_to_lidar: 0.0 # Time offset between LiDAR and IMU calibrated by other algorithms, e.g., LI-Init (find in Readme)
++                                        # the timesample of IMU is transferred from the current timeline to LiDAR's timeline by subtracting this value
++
++        preprocess:
++            lidar_type: 5
++            scan_line: 18
++            timestamp_unit: 0           # the unit of time/t field in the PointCloud2 rostopic: 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
++            blind: 0.5
++
++        mapping:
++            imu_en: true
++            start_in_aggressive_motion: false # if true, a preknown gravity should be provided in following gravity_init
++            extrinsic_est_en: false # for aggressive motion, set this variable false
++            imu_time_inte: 0.004 # = 1 / frequency of IMU
++            satu_acc: 30.0 # the saturation value of IMU's acceleration. not related to the units
++            satu_gyro: 35.0 # the saturation value of IMU's angular velocity. not related to the units
++            acc_norm: 9.81 # 1.0 for g as unit, 9.81 for m/s^2 as unit of the IMU's acceleration
++            lidar_meas_cov: 0.01 # 0.001
++            acc_cov_output: 500.0
++            gyr_cov_output: 1000.0
++            b_acc_cov: 0.0001 
++            b_gyr_cov: 0.0001 
++            imu_meas_acc_cov: 0.1 #0.1 # 2
++            imu_meas_omg_cov: 0.1 #0.1 # 2 
++            gyr_cov_input: 0.01 # for IMU as input model
++            acc_cov_input: 0.1 # for IMU as input model
++            plane_thr: 0.1 # 0.05, the threshold for plane criteria, the smaller, the flatter a plane
++            match_s: 81.0
++            fov_degree: 180.0
++            det_range: 100.0
++            gravity_align: true # true to align the z axis of world frame with the direction of gravity, and the gravity direction should be specified below
++            gravity: [0.0, 0.0, -9.810] # [0.0, 9.810, 0.0] # gravity to be aligned
++            gravity_init: [0.0, 0.0, -9.810] # [0.0, 9.810, 0.0] # # preknown gravity in the first IMU body frame, use when imu_en is false or start from a non-stationary state
++            
++            # transform from imu to lidar
++            extrinsic_T: [ 0.007698, 0.014655, -0.00667] # ulhk # [-0.5, 1.4, 1.5] # utbm
++            extrinsic_R: [ 1.0, 0.0, 0.0,
++                          0.0, 1.0, 0.0,
++                          0.0, 0.0, 1.0 ] # ulhk 4 utbm 3
++
++        odometry: 
++            publish_odometry_without_downsample: true  
++
++        publish:
++            path_en: true                 # false: close the path output
++            scan_publish_en: true         # false: close all the point cloud output
++            scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
++
++        pcd_save:
++            pcd_save_en: true       # save map to pcd file
++            interval: -1            # how many LiDAR frames saved in each pcd file; 
++                                        # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+\ No newline at end of file
+diff --git a/launch/mapping_unilidar_l1.launch.py b/launch/mapping_unilidar_l1.launch.py
+index 14aa43f..cce1bde 100644
+--- a/launch/mapping_unilidar_l1.launch.py
++++ b/launch/mapping_unilidar_l1.launch.py
+@@ -12,6 +12,11 @@ def generate_launch_description():
+         'rviz', default_value='true',
+         description='Flag to launch RViz.')
+ 
++    # Local addition (not upstream): needed when replaying a bag or running in Gazebo.
++    sim_time_arg = DeclareLaunchArgument(
++        'use_sim_time', default_value='false',
++        description='Use the /clock topic instead of wall time.')
++
+     # Node parameters, including those from the YAML configuration file
+     laser_mapping_params = [
+         PathJoinSubstitution([
+@@ -19,6 +24,7 @@ def generate_launch_description():
+             'config', 'unilidar_l1.yaml'
+         ]),
+         {
++            'use_sim_time': LaunchConfiguration('use_sim_time'),
+             'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
+             'prop_at_freq_of_imu': True,
+             'check_satu': True,
+@@ -51,6 +57,7 @@ def generate_launch_description():
+             FindPackageShare('point_lio'),
+             'rviz_cfg', 'loam_livox.rviz'
+         ])],
++        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+         condition=IfCondition(LaunchConfiguration('rviz')),
+         prefix='nice'
+     )
+@@ -58,6 +65,7 @@ def generate_launch_description():
+     # Assemble the launch description
+     ld = LaunchDescription([
+         rviz_arg,
++        sim_time_arg,
+         laser_mapping_node,
+         GroupAction(
+             actions=[rviz_node],
+diff --git a/launch/mapping_unilidar_l2.launch.py b/launch/mapping_unilidar_l2.launch.py
+index d3d966e..ded3238 100644
+--- a/launch/mapping_unilidar_l2.launch.py
++++ b/launch/mapping_unilidar_l2.launch.py
+@@ -12,6 +12,11 @@ def generate_launch_description():
+         'rviz', default_value='true',
+         description='Flag to launch RViz.')
+ 
++    # Local addition (not upstream): needed when replaying a bag or running in Gazebo.
++    sim_time_arg = DeclareLaunchArgument(
++        'use_sim_time', default_value='false',
++        description='Use the /clock topic instead of wall time.')
++
+     # Node parameters, including those from the YAML configuration file
+     laser_mapping_params = [
+         PathJoinSubstitution([
+@@ -19,6 +24,7 @@ def generate_launch_description():
+             'config', 'unilidar_l2.yaml'
+         ]),
+         {
++            'use_sim_time': LaunchConfiguration('use_sim_time'),
+             'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
+             'prop_at_freq_of_imu': True,
+             'check_satu': True,
+@@ -51,6 +57,7 @@ def generate_launch_description():
+             FindPackageShare('point_lio'),
+             'rviz_cfg', 'loam_livox.rviz'
+         ])],
++        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+         condition=IfCondition(LaunchConfiguration('rviz')),
+         prefix='nice'
+     )
+@@ -58,6 +65,7 @@ def generate_launch_description():
+     # Assemble the launch description
+     ld = LaunchDescription([
+         rviz_arg,
++        sim_time_arg,
+         laser_mapping_node,
+         GroupAction(
+             actions=[rviz_node],
+diff --git a/package.xml b/package.xml
+index 01ba0ff..a1e9ea4 100644
+--- a/package.xml
++++ b/package.xml
+@@ -22,6 +22,7 @@
+   <depend>rclcpp</depend> <!-- roscpp in ROS1 is replaced by rclcpp in ROS2 -->
+   <depend>rclpy</depend>  <!-- rospy is replaced by rclpy in ROS2 -->
+   <depend>sensor_msgs</depend>
++  <depend>std_msgs</depend>
+   <depend>geometry_msgs</depend>
+   <depend>nav_msgs</depend>
+   <depend>tf2_ros</depend> <!-- tf in ROS1 is replaced by tf2 in ROS2 -->
+diff --git a/rviz_cfg/loam_livox.rviz b/rviz_cfg/loam_livox.rviz
+index b6f0986..517b64d 100644
+--- a/rviz_cfg/loam_livox.rviz
++++ b/rviz_cfg/loam_livox.rviz
+@@ -240,6 +240,27 @@ Visualization Manager:
+       Use Fixed Frame: true
+       Use rainbow: true
+       Value: true
++    - Alpha: 0.7
++      Class: rviz_default_plugins/Map
++      Color Scheme: map
++      Draw Behind: true
++      Enabled: true
++      Name: Map2D
++      Topic:
++        Depth: 1
++        Durability Policy: Transient Local
++        Filter size: 10
++        History Policy: Keep Last
++        Reliability Policy: Reliable
++        Value: /map
++      Update Topic:
++        Depth: 5
++        Durability Policy: Volatile
++        History Policy: Keep Last
++        Reliability Policy: Reliable
++        Value: /map_updates
++      Use Timestamp: false
++      Value: true
+   Enabled: true
+   Global Options:
+     Background Color: 0; 0; 0
+diff --git a/src/laserMapping.cpp b/src/laserMapping.cpp
+index b6d5f4a..c825ed0 100644
+--- a/src/laserMapping.cpp
++++ b/src/laserMapping.cpp
+@@ -21,6 +21,8 @@
+ #include <sensor_msgs/msg/point_cloud2.hpp>
+ #include <tf2_ros/transform_broadcaster.h>
+ #include <geometry_msgs/msg/vector3.hpp>
++#include <std_msgs/msg/bool.hpp>
++#include <chrono>
+ // #include <livox_ros_driver2/msg/custom_msg.hpp>
+ 
+ #include "parameters.h"
+@@ -335,6 +337,38 @@ void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+ //     sig_buffer.notify_all();
+ // }
+ 
++/*** ZUPT (zero velocity update) ***/
++// 停止判定のノード (lidar_bridge の stationary_detector) が出す /stationary を受け取り,
++// 止まっている間は kf_output に「速度 = 0」の観測を入れる. 速度が 0 に保たれるので,
++// IMU の加速度のずれ (バイアス, 振動) を積分して位置が流れるのを防ぐ.
++bool zupt_flag = false;
++bool zupt_was_active = false;
++std::chrono::steady_clock::time_point zupt_stamp;
++
++void zupt_cbk(const std_msgs::msg::Bool::SharedPtr msg) {
++    zupt_flag = msg->data;
++    zupt_stamp = std::chrono::steady_clock::now();
++}
++
++bool zupt_active() {
++    if (!zupt_en || !zupt_flag) return false;
++    double age = std::chrono::duration<double>(std::chrono::steady_clock::now() - zupt_stamp).count();
++    return age < zupt_timeout;
++}
++
++// 速度 (状態の 12..14 番目) に z = 0 の観測を入れる通常のカルマン更新
++void zupt_update_output() {
++    const int V = 12;
++    Eigen::Matrix<double, 30, 30> P = kf_output.get_P();
++    Eigen::Matrix3d S = P.block<3, 3>(V, V) + Eigen::Matrix3d::Identity() * zupt_vel_cov;
++    Eigen::Matrix<double, 30, 3> K = P.block<30, 3>(0, V) * S.inverse();
++    Eigen::Vector3d residual = -kf_output.x_.vel;
++    Eigen::Matrix<double, 30, 1> dx = K * residual;
++    kf_output.x_.boxplus(dx);
++    P -= K * P.block<3, 30>(V, 0);
++    kf_output.change_P(P);
++}
++
+ void imu_cbk(const sensor_msgs::msg::Imu::SharedPtr msg_in) {
+     publish_count++;
+     sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
+@@ -781,6 +815,17 @@ int main(int argc, char **argv) {
+     sub_pcl = nh->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
+     // }
+     auto sub_imu = nh->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 200000, imu_cbk);
++    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_zupt;
++    if (zupt_en) {
++        if (use_imu_as_input) {
++            RCLCPP_WARN(logger, "zupt.enable は use_imu_as_input: false のときだけ有効. ZUPT を使わない");
++            zupt_en = false;
++        } else {
++            sub_zupt = nh->create_subscription<std_msgs::msg::Bool>(zupt_topic, 10, zupt_cbk);
++            RCLCPP_INFO(logger, "ZUPT: %s が true の間, 速度 = 0 を観測として入れる (分散 %g)",
++                        zupt_topic.c_str(), zupt_vel_cov);
++        }
++    }
+ 
+     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes;
+     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes_body;
+@@ -1017,6 +1062,15 @@ int main(int argc, char **argv) {
+                                     propag_time += omp_get_wtime() - propag_imu_start;
+                                     double solve_imu_start = omp_get_wtime();
+                                     kf_output.update_iterated_dyn_share_IMU();
++                                    bool zupt_now = zupt_active();
++                                    if (zupt_now) {
++                                        zupt_update_output();
++                                    }
++                                    if (zupt_now != zupt_was_active) {
++                                        RCLCPP_INFO(logger, zupt_now ? "ZUPT: 停止中 (速度 = 0 を観測として入れる)"
++                                                                     : "ZUPT: 走行中");
++                                        zupt_was_active = zupt_now;
++                                    }
+                                     solve_time += omp_get_wtime() - solve_imu_start;
+                                 }
+                             }
+diff --git a/src/parameters.cpp b/src/parameters.cpp
+index 6ab2795..8ace2cd 100644
+--- a/src/parameters.cpp
++++ b/src/parameters.cpp
+@@ -13,6 +13,9 @@ bool prop_at_freq_of_imu, check_satu, con_frame, cut_frame;
+ bool use_imu_as_input, space_down_sample, publish_odometry_without_downsample;
+ int init_map_size, con_frame_num;
+ double match_s, satu_acc, satu_gyro, cut_frame_time_interval;
++bool zupt_en;
++std::string zupt_topic;
++double zupt_vel_cov, zupt_timeout;
+ float plane_thr;
+ double filter_size_surf_min, filter_size_map_min, fov_deg;
+ double cube_len;
+@@ -45,6 +48,12 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
+     nh->declare_parameter<int>("init_map_size", 100);
+     nh->declare_parameter<bool>("space_down_sample", true);
+     nh->declare_parameter<double>("mapping.satu_acc", 3.0);
++    // ZUPT: zupt.topic (std_msgs/Bool) が true の間, 速度 = 0 を観測として入れる.
++    // zupt.timeout [s] より古い値は無視する (停止判定のノードが止まったら効かなくなる)
++    nh->declare_parameter<bool>("zupt.enable", false);
++    nh->declare_parameter<std::string>("zupt.topic", "/stationary");
++    nh->declare_parameter<double>("zupt.vel_cov", 1e-4);     // 速度 0 の観測の分散 [(m/s)^2]
++    nh->declare_parameter<double>("zupt.timeout", 0.5);
+     nh->declare_parameter<double>("mapping.satu_gyro", 35.0);
+     nh->declare_parameter<double>("mapping.acc_norm", 1.0);
+     nh->declare_parameter<float>("mapping.plane_thr", 0.05f);
+@@ -105,6 +114,10 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
+     nh->get_parameter("init_map_size", init_map_size);
+     nh->get_parameter("space_down_sample", space_down_sample);
+     nh->get_parameter("mapping.satu_acc", satu_acc);
++    nh->get_parameter("zupt.enable", zupt_en);
++    nh->get_parameter("zupt.topic", zupt_topic);
++    nh->get_parameter("zupt.vel_cov", zupt_vel_cov);
++    nh->get_parameter("zupt.timeout", zupt_timeout);
+     nh->get_parameter("mapping.satu_gyro", satu_gyro);
+     nh->get_parameter("mapping.acc_norm", acc_norm);
+     nh->get_parameter("mapping.plane_thr", plane_thr);
+diff --git a/src/parameters.h b/src/parameters.h
+index 03e0c96..6d94f71 100644
+--- a/src/parameters.h
++++ b/src/parameters.h
+@@ -34,6 +34,10 @@ extern double laser_point_cov, acc_norm;
+ extern double acc_cov_input, gyr_cov_input, vel_cov;
+ extern double gyr_cov_output, acc_cov_output, b_gyr_cov, b_acc_cov;
+ extern double imu_meas_acc_cov, imu_meas_omg_cov;
++// ZUPT (zero velocity update): 止まっている間は「速度 = 0」を観測として入れ, IMU のずれで位置が流れるのを防ぐ
++extern bool zupt_en;
++extern std::string zupt_topic;
++extern double zupt_vel_cov, zupt_timeout;
+ extern int lidar_type, pcd_save_interval;
+ extern std::vector<double> gravity_init, gravity;
+ extern std::vector<double> extrinT;

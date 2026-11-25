@@ -1,0 +1,23 @@
+# 外部リポジトリ. 取得は ./scripts/fetch-external.sh (必要なファイルだけ取り, patches/ の変更を当てる).
+# ignore = dirty: パッチや実行時のファイル (PCD/scans.pcd など) で git status が汚れないようにする
+[submodule "src/common/point_lio_ros2"]
+	path = src/common/point_lio_ros2
+	url = https://github.com/dfloreaa/point_lio_ros2.git
+	ignore = dirty
+[submodule "src/l1/unilidar_sdk"]
+	path = src/l1/unilidar_sdk
+	url = https://github.com/unitreerobotics/unilidar_sdk.git
+	ignore = dirty
+[submodule "src/l2/unilidar_sdk2"]
+	path = src/l2/unilidar_sdk2
+	url = https://github.com/unitreerobotics/unilidar_sdk2.git
+	ignore = dirty
+[submodule "src/l2/lidar_localization_ros2"]
+	path = src/l2/lidar_localization_ros2
+	url = https://github.com/rsasaki0109/lidar_localization_ros2.git
+	ignore = dirty
+[submodule "src/l2/ndt_omp_ros2"]
+	path = src/l2/ndt_omp_ros2
+	url = https://github.com/rsasaki0109/ndt_omp_ros2.git
+	branch = humble
+	ignore = dirty

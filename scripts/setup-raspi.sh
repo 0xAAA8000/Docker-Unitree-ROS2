@@ -83,6 +83,9 @@ fi
 # yaml / launch / Python の変更は再ビルドなしで反映される (C++ は再ビルドが必要)
 mkdir -p "$WS"
 cd "$WS"
+# 外部リポジトリ (Point-LIO, LiDAR ドライバなど. git サブモジュール) を取り, patches/ を当てる
+"$REPO/scripts/fetch-external.sh" "$TARGET"
+
 set +u
 . /opt/ros/humble/setup.bash
 set -u

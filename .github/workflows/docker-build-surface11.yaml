@@ -18,6 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 外部リポジトリ (サブモジュール) を取り, patches/ を当てる
+      - name: Fetch external repositories
+        run: ./scripts/fetch-external.sh
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/build-push-action@v6
@@ -47,6 +51,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # 外部リポジトリ (サブモジュール) を取り, patches/ を当てる
+      - name: Fetch external repositories
+        run: ./scripts/fetch-external.sh
 
       # GHCRのイメージ名は小文字必須
       - name: Set image name

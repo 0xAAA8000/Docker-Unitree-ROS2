@@ -1,90 +1,91 @@
-# ROS2 LiDAR Docker Image
-**TL;DR:**  
-1. Unitree L1/L2 LiDARでROS2, PointLioを動かすためのDockerイメージ
-2. ROS2上でGazebo(Ign)のシミュレーションをするためのDockerイメージ
+# Unitree LiDAR 自走ロボット (ROS 2 Humble)
 
-> ROS 2 のコマンドの使い方は **[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md)**
-> にまとめてあります。`ros2 topic` / `ros2 launch` / `ros2 bag` / `colcon` の使い方と、
-> このリポジトリでの定番コマンド、トラブルシュート早見表つきです。
+Unitree L1 / L2 LiDAR と Point-LIO で自己位置を求め、Nav2 で経路を計画し、Arduino でアッカーマン (前輪操舵) の
+RC カーを走らせるためのリポジトリです。スマホのブラウザからモードを選び、地図をタップして目的地を送れます。
 
-## Usage
-### 1. イメージの取得  
+> ROS 2 のコマンドの使い方は **[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md)** にまとめてあります。
 
-**L1**
-```bash
-docker pull ghcr.io/0xaaa8000/docker-unitree-ros2/l1:latest
-```
-**l2**
-```bash
-docker pull ghcr.io/0xaaa8000/docker-unitree-ros2/l2:latest
-```
-**sim**
-```bash
-docker pull ghcr.io/0xaaa8000/docker-unitree-ros2/sim:latest
-```
-### 2. 起動
-`--target`でバージョンを選択(l1, l2, sim)  
-`--dev`で作業ディレクトリ(src/{l1, l2, sim})をマウント
-```bash
-./scripts/launch-docker.sh --target=sim --dev
-```
+もとは Docker イメージ用のリポジトリでしたが、今はロボットに直接入れて使う形を基本にしています。
+Docker イメージ (sim 含む) は[最後の節](#docker-で動かす-任意)で引き続き作れます。
 
-## 含まれるパッケージ
-### 共通部
+## 中身
+
+| 場所 | 内容 |
+| --- | --- |
+| `src/common/` | 全機種共通のパッケージ (下の表) |
+| `src/l1/`, `src/l2/` | LiDAR の機種ごとのパッケージ (ドライバなど) |
+| `src/sim/` | Gazebo のシミュレーション (`sim_gazebo`) |
+| `firmware/` | Arduino のスケッチ (`operator.ino`) |
+| `scripts/` | セットアップ (`setup-raspi.sh`)、外部リポジトリの取得 (`fetch-external.sh`)、自動起動など |
+| `patches/` | 外部リポジトリに当てる、こちらの変更 |
+
+### このリポジトリのパッケージ (`src/common/`)
+
 | パッケージ | 内容 |
 | --- | --- |
-| `point_lio` | Point-LIO (LiDAR-IMU オドメトリ)。[dfloreaa/point_lio_ros2](https://github.com/dfloreaa/point_lio_ros2) を `src/point_lio_ros2/` に取り込んだもの |
+| `lidar_bridge` | LiDAR ドライバのトピックを Point-LIO 用の名前・座標に付け替える。停止判定 (ZUPT 用)、取付角度の確認 |
+| `obstacle_detector` | 点群から Nav2 の障害物とクリア用の点群を作る (坂の判定つき) |
+| `robot_navigation` | Nav2 の起動と設定 |
+| `robot_operation` | Nav2 の速度指令を Arduino のサーボ角・スロットルに変換。走行キャリブレーション |
+| `robot_map` | Point-LIO の点群からスマホ表示用の 2D 地図を作る |
+| `robot_goal` | 目的地を送る (コマンド、スマホの Web 画面) |
+| `robot_bringup` | 全部を 1 つのコマンドで起動する |
+| `robot_launcher` | スマホでモードを選んで起動する画面 |
 
-### L1, L2用
-| パッケージ | 内容 |
-| --- | --- |
-| `unitree_lidar_ros2` | Unitree L1 / L2 LiDAR の ROS 2 ドライバ (l1:`src/unilidar_sdk/`, l2:`src/unilidar_sdk2`) |
+### 外部リポジトリ (git サブモジュール)
 
-### Gazebo Sim用
-| パッケージ | 内容 |
-| --- | --- |
-| ` ` ||
+外部のリポジトリは取り込まず、git のサブモジュールとして取り込み元のコミットを参照します。
+こちらで手を入れたものは `patches/` に変更を置き、取得のときに当てます。
 
-## Point-LIO を動かす
-
-実機 (Unitree L2) の場合:
+| 場所 | 取り込み元 | コミット | こちらの変更 |
+| --- | --- | --- | --- |
+| `src/common/point_lio_ros2` | [dfloreaa/point_lio_ros2](https://github.com/dfloreaa/point_lio_ros2) | `a8e2d0d` | `patches/point_lio_ros2.patch` (ZUPT、L1 の設定、`use_sim_time` 引数、RViz の設定) |
+| `src/l1/unilidar_sdk` | [unitreerobotics/unilidar_sdk](https://github.com/unitreerobotics/unilidar_sdk) | `1bd7d95` (v1.0.16) | なし |
+| `src/l2/unilidar_sdk2` | [unitreerobotics/unilidar_sdk2](https://github.com/unitreerobotics/unilidar_sdk2) | `0e3c51f` (v2.0.10) | `patches/unilidar_sdk2.patch` (ドライバの launch に接続方式の引数) |
+| `src/l2/lidar_localization_ros2` | [rsasaki0109/lidar_localization_ros2](https://github.com/rsasaki0109/lidar_localization_ros2) | `cd5e27a` | なし |
+| `src/l2/ndt_omp_ros2` | [rsasaki0109/ndt_omp_ros2](https://github.com/rsasaki0109/ndt_omp_ros2) | `25f3489` | なし |
 
 ```bash
-# ターミナル1: LiDAR ドライバ
-ros2 launch unitree_lidar_ros2 launch.py
-
-# ターミナル2: Point-LIO
-ros2 launch point_lio mapping_unilidar_l2.launch.py
+./scripts/fetch-external.sh          # 取得とパッチ (setup-raspi.sh が自動で実行する。何度実行してもよい)
+./scripts/fetch-external.sh l1       # common と l1 だけ
 ```
 
-L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
-`avia` / `horizon` / `mid360` / `ouster64` / `velody16` 用の launch と、
-オドメトリのみを出す `correct_odom_unilidar_l1(l2).launch.py` も同梱しています。
+* 使わないファイル (Point-LIO の README 用の画像 約 250 MB、Unilidar SDK の ROS1 版や docs) は取りません
+  (部分クローンと sparse-checkout)。`git submodule update --init` で全部取った場合も、
+  ROS1 版には `COLCON_IGNORE` を置き、Docker には `.dockerignore` で入れません。
+* 外部リポジトリの中身を変えたいときは、変更をパッチにして `patches/<ディレクトリ名>.patch` に置きます
+  (`git -C src/common/point_lio_ros2 diff > patches/point_lio_ros2.patch`)。
+* 取り込み元のコミットを変えるときは、サブモジュールの中でそのコミットに切り替えてから
+  `git add src/common/point_lio_ros2` でコミットし、パッチが当たるか `fetch-external.sh` で確かめます。
+* 以前このリポジトリに取り込んでいたころのクローンで `git pull` すると、消えずに残ったファイル (地図など) は
+  `fetch-external.sh` が `.external-backup/` に退避してから取得します。
 
-パッケージ名は `point_lio`、実行ファイルは `pointlio_mapping` です
-(ディレクトリ名の `point_lio_ros2` とは異なります)。
+## セットアップ (Ubuntu 22.04 / Raspberry Pi)
 
-### launch 引数
+Raspberry Pi (Ubuntu 22.04 / arm64) や PC に ROS 2 Humble と本リポジトリを入れます。
+`scripts/setup-raspi.sh` が ROS 2 のインストール、依存パッケージ、`dialout` グループへの追加、
+外部リポジトリの取得、ビルド、`~/.bashrc` への設定追記までを行います (何度実行してもよい)。
 
-| 引数 | 既定値 | 説明 |
-| --- | --- | --- |
-| `rviz` | `true` | RViz2 を同時に起動する |
-| `use_sim_time` | `false` | bag 再生や Gazebo で回すときは `true` (unilidar 用 launch のみ、下記「取り込みにあたっての変更点」参照) |
+```bash
+git clone https://github.com/0xAAA8000/Docker-Unitree-ROS2.git ~/Docker-Unitree-ROS2
+cd ~/Docker-Unitree-ROS2
+./scripts/setup-raspi.sh l1          # L2 なら l2。l1 と l2 は同じワークスペースに入れられない
+# メモリ不足で Point-LIO のビルドが落ちるときは JOBS=1 ./scripts/setup-raspi.sh l1
+source ~/.bashrc
+```
 
-### トピック
-
-* 購読: `common.lid_topic` (既定 `/unilidar/cloud`), `common.imu_topic` (既定 `/unilidar/imu`)
-* 配信: `/pointlio/odom`, `/pointlio/path`, `/pointlio/cloud_registered`,
-  `/pointlio/cloud_registered_body`, `/pointlio/laser_map`
-* TF: `camera_init` → `aft_mapped`
-  (`odom_header_frame_id` / `odom_child_frame_id` パラメータで変更可能)
-
-パラメータは `src/point_lio_ros2/config/*.yaml` にあります。
-
-動作確認や、うまく動かないときの切り分けは
-[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md#14-トラブルシュート早見表)
-を参照してください。
-
+* ビルド先は `~/ros2_ws` (`WS=` で変更可)。`--symlink-install` なので、リポジトリの yaml / launch /
+  Python を書き換えれば再ビルドなしで反映されます。C++ を変えたら同じスクリプトを再実行します。
+* 新しいパッケージを足したとき、C++ を変えたとき、外部リポジトリのコミットやパッチを変えたときも、このスクリプトを再実行します。
+* ふだんはスマホのモード選択 ([下記](#スマホでモードを選んで起動する-robot_launcher)) から起動し、
+  Arduino を挿したら自動で起動するようにできます ([下記](#arduino-を挿したら自動で起動する-install-autostartsh))。
+* rviz2 は入れていません。同じネットワークの PC で `ROS_DOMAIN_ID` をそろえて rviz2 を開きます
+  (ラズパイにも入れるなら `WITH_RVIZ=1`)。
+* ラズパイには RTC が無いので、起動直後は時計がずれていて、NTP で同期した瞬間に時刻が飛びます。
+  Point-LIO は時刻が戻ると `loop back` でデータを捨てるので、`timedatectl` で
+  `System clock synchronized: yes` になってから起動してください。
+* L1 (`/dev/ttyUSB*`) と Arduino (`/dev/ttyACM*`) は挿す順で番号が変わることがあるので、
+  `/dev/serial/by-id/...` で指定するのが確実です。
 
 ## 実機で Nav2 を動かす (`lidar_bridge` / `robot_operation`)
 
@@ -158,10 +159,10 @@ ros2 launch robot_operation operation.launch.py calibration_file:=$HOME/drive_ca
 `--bag` を付けると走り出す前から止まった後までの生データと Point-LIO の出力を記録します。
 
 ```bash
-ros2 run robot_operation drive_forward --speed 0.3 --duration 5 --bag /opt/common_ws/src/bags/forward1
+ros2 run robot_operation drive_forward --speed 0.3 --duration 5 --bag ~/bags/forward1
 ```
 
-* 記録先はコンテナを終了しても消えない、マウントしている場所 (`/opt/common_ws/src` など) にします。
+* Docker のコンテナで動かすときは、記録先をコンテナを終了しても消えない、マウントしている場所 (`/opt/common_ws/src` など) にします。
 * Ctrl-C で中止すると速度 0 を送ってから終了します。
 * Point-LIO が作った地図は、real.launch.py を Ctrl-C で終了したときに
   `src/common/point_lio_ros2/PCD/scans.pcd` に保存されます。
@@ -341,60 +342,80 @@ Point-LIO の `/cloud_registered` (map 座標の点群、毎スキャン) を ba
 * Nav2 は今のところ `/map` を使いません (global costmap は rolling window のまま)。
 
 
-## ラズパイに直接入れる (Docker なし)
+## Point-LIO だけを動かす
 
-Raspberry Pi (Ubuntu 22.04 / arm64) には、コンテナと同じ ROS 2 Humble をそのまま入れられます。
-`scripts/setup-raspi.sh` が ROS 2 のインストール、依存パッケージ、`dialout` グループへの追加、
-ビルド、`~/.bashrc` への設定追記までを行います (何度実行してもよい)。
+実機 (Unitree L2) の場合:
 
 ```bash
-git clone https://github.com/0xAAA8000/Docker-Unitree-ROS2.git ~/Docker-Unitree-ROS2
-cd ~/Docker-Unitree-ROS2
-./scripts/setup-raspi.sh l1          # L2 なら l2。l1 と l2 は同じワークスペースに入れられない
-# メモリ不足で Point-LIO のビルドが落ちるときは JOBS=1 ./scripts/setup-raspi.sh l1
-source ~/.bashrc
+# ターミナル1: LiDAR ドライバ
+ros2 launch unitree_lidar_ros2 launch.py
+
+# ターミナル2: Point-LIO
+ros2 launch point_lio mapping_unilidar_l2.launch.py
 ```
 
-* ビルド先は `~/ros2_ws` (`WS=` で変更可)。`--symlink-install` なので、リポジトリの yaml / launch /
-  Python を書き換えれば再ビルドなしで反映されます。C++ を変えたら同じスクリプトを再実行します。
-* 起動手順は上の「実機で Nav2 を動かす」と同じです (コンテナに入る代わりに、ラズパイのターミナルで実行)。
-* rviz2 は入れていません。同じネットワークの PC で `ROS_DOMAIN_ID` をそろえて rviz2 を開きます
-  (ラズパイにも入れるなら `WITH_RVIZ=1`)。
-* ラズパイには RTC が無いので、起動直後は時計がずれていて、NTP で同期した瞬間に時刻が飛びます。
-  Point-LIO は時刻が戻ると `loop back` でデータを捨てるので、`timedatectl` で
-  `System clock synchronized: yes` になってから起動してください。
-* L1 (`/dev/ttyUSB*`) と Arduino (`/dev/ttyACM*`) は挿す順で番号が変わることがあるので、
-  `/dev/serial/by-id/...` で指定するのが確実です。
+L1 の場合は `mapping_unilidar_l1.launch.py` を使ってください。
+`avia` / `horizon` / `mid360` / `ouster64` / `velody16` 用の launch と、
+オドメトリのみを出す `correct_odom_unilidar_l1(l2).launch.py` も同梱しています。
+
+パッケージ名は `point_lio`、実行ファイルは `pointlio_mapping` です
+(ディレクトリ名の `point_lio_ros2` とは異なります)。
+
+### launch 引数
+
+| 引数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `rviz` | `true` | RViz2 を同時に起動する |
+| `use_sim_time` | `false` | bag 再生や Gazebo で回すときは `true` (unilidar 用 launch のみ、下記「Point-LIO のバージョンについて」参照) |
+
+### トピック
+
+* 購読: `common.lid_topic` (既定 `/unilidar/cloud`), `common.imu_topic` (既定 `/unilidar/imu`)
+* 配信: `/pointlio/odom`, `/pointlio/path`, `/pointlio/cloud_registered`,
+  `/pointlio/cloud_registered_body`, `/pointlio/laser_map`
+* TF: `camera_init` → `aft_mapped`
+  (`odom_header_frame_id` / `odom_child_frame_id` パラメータで変更可能)
+
+パラメータは `src/common/point_lio_ros2/config/*.yaml` にあります。
+
+動作確認や、うまく動かないときの切り分けは
+[ROS 2 コマンド チートシート](docs/ros2-cheatsheet.md#14-トラブルシュート早見表)
+を参照してください。
+
 
 ## Point-LIO のバージョンについて
 
 Unitree 公式の [unitreerobotics/point_lio_unilidar](https://github.com/unitreerobotics/point_lio_unilidar)
-は catkin / roscpp ベースの **ROS 1 専用パッケージ**で、そのままでは本イメージ (Humble) では
-ビルドできません。
+は catkin / roscpp ベースの **ROS 1 専用パッケージ**で、Humble ではビルドできません。
 
-そこで、ROS 2 に移植済みの
-[**dfloreaa/point_lio_ros2**](https://github.com/dfloreaa/point_lio_ros2)
-を `src/point_lio_ros2/` に取り込んでいます。これは hku-mars の Point-LIO を ROS 2 に
-移植したうえで、Unitree Unilidar L1 / L2 対応 (上流 `point_lio_unilidar` 由来) を
-取り込んだものです。Livox MID-360 にも対応しています。
+そこで、ROS 2 に移植済みの [**dfloreaa/point_lio_ros2**](https://github.com/dfloreaa/point_lio_ros2) を
+サブモジュール (`src/common/point_lio_ros2/`、コミット `a8e2d0d`、2025-08-14) として使っています。
+これは hku-mars の Point-LIO を ROS 2 に移植したうえで、Unitree Unilidar L1 / L2 対応
+(上流 `point_lio_unilidar` 由来) を取り込んだものです。
 
-* 取り込み元コミット: `a8e2d0d5090af97ead8dd4fac3d37cf3dbb33ff7` (2025-08-14)
-* 更新するときは、上記リポジトリの新しいコミットで `src/point_lio_ros2/` を
-  置き換えてください
+`patches/point_lio_ros2.patch` で次の変更を当てています。
 
-### 取り込みにあたっての変更点
+1. ZUPT (止まっている間は速度 0 を観測として入れる。`zupt.enable` / `zupt.topic` / `zupt.vel_cov` / `zupt.timeout`)
+2. `config/unilidar_l1.yaml` の調整 (変更前の控えが `unilidar_l1.yaml.bak`)
+3. `mapping_unilidar_l1.launch.py` / `mapping_unilidar_l2.launch.py` に `use_sim_time` 引数 (Gazebo / bag 再生用)
+4. RViz の表示設定
 
-上流をほぼそのまま入れていますが、次の3点だけ手を入れています。
-
-1. `image/` ディレクトリ (README 用のデモ GIF、約 246 MB) を除外
-2. 実体のないサブモジュール定義が残っていた `.gitmodules` を削除
-   (`include/IKFoM` と `include/ikd-Tree` は上流でも実ファイルとしてコミット済み)
-3. `mapping_unilidar_l1.launch.py` / `mapping_unilidar_l2.launch.py` に
-   `use_sim_time` 引数を追加 (Gazebo / bag 再生用。上流には無い)
+上流の `image/` (README 用のデモ GIF、約 246 MB) と、実体のないサブモジュール定義の `.gitmodules` は取りません
+(`include/IKFoM` と `include/ikd-Tree` は上流でも実ファイルとしてコミット済み)。
 
 Livox AVIA の `CustomMsg` 入力経路は上流でもコメントアウトされており
-(`livox_ros_driver2` を含めていないため)、標準の `sensor_msgs/PointCloud2` 経路のみが
-有効です。
+(`livox_ros_driver2` を含めていないため)、標準の `sensor_msgs/PointCloud2` 経路のみが有効です。
+
+## Docker で動かす (任意)
+
+Docker イメージは L1 / L2 / sim (Gazebo) の 3 種類です。ビルドの前に外部リポジトリを取得しておきます
+(イメージには `src/` の中身がそのまま入るため。GitHub Actions のビルドでは自動で実行します)。
+
+```bash
+./scripts/fetch-external.sh
+docker pull ghcr.io/0xaaa8000/docker-unitree-ros2/l1:latest     # l2, sim も同様
+./scripts/launch-docker.sh --target=sim --dev                   # --dev で src/{l1, l2, sim} をマウント
+```
 
 ## Licenses & Acknowledgments
 
@@ -412,8 +433,8 @@ This project utilizes and depends on the following open-source software:
 
 * **Point-LIO / point_lio_ros2**
   * **License:** [GNU General Public License v2.0](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
-    (`src/point_lio_ros2/LICENSE`)。上流の `package.xml` には `BSD` と書かれていますが、
-    同梱の `LICENSE` は GPL-2.0 です。**このパッケージを取り込んだことで、配布物全体に
+    (`src/common/point_lio_ros2/LICENSE`)。上流の `package.xml` には `BSD` と書かれていますが、
+    同梱の `LICENSE` は GPL-2.0 です。**Docker イメージなど、Point-LIO を含めて配布するものには
     GPL-2.0 の条件がかかる点に注意してください。**
   * **Copyright:** Copyright (c) Dongjiao He, Wei Xu (HKU MARS Lab) / Daniel Florea (ROS 2 port & Unilidar support)
   * **Source:** [hku-mars/Point-LIO](https://github.com/hku-mars/Point-LIO),

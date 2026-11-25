@@ -8,3 +8,6 @@ gazebo_sim/model/
 
 # drive_forward / ros2 bag の記録 (コンテナからはマウント先の /opt/common_ws/src/bags)
 src/common/bags/
+
+# scripts/fetch-external.sh が退避した, 以前取り込んでいたころの残り
+.external-backup/

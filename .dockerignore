@@ -6,3 +6,20 @@ scripts/
 src/common/point_lio_ros2/PCD/*.pcd
 src/common/point_lio_ros2/Log/*.csv
 Dockerfile.local
+
+# 外部リポジトリ (git サブモジュール) の git の情報と, イメージに入れないもの.
+# scripts/fetch-external.sh はこれらを取らないが, git submodule update で全部取ったときのために除外する
+src/**/.git
+**/__pycache__
+.external-backup/
+patches/
+src/common/point_lio_ros2/image/
+src/common/point_lio_ros2/Log/
+src/common/point_lio_ros2/.gitmodules
+src/l1/unilidar_sdk/unitree_lidar_ros/
+src/l1/unilidar_sdk/docs/
+src/l2/unilidar_sdk2/unitree_lidar_ros/
+src/l2/unilidar_sdk2/docs/
+src/l2/unilidar_sdk2/README_CN.md
+src/l2/unilidar_sdk2/VERSION.md
+src/l2/ndt_omp_ros2/.vscode/
