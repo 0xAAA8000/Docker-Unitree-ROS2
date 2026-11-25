@@ -65,6 +65,7 @@ class WebGoal(Node):
                           'local': p('local_costmap_topic', '/local_costmap/costmap').value}
         voxel_topic = p('voxel_topic', '/voxel_map').value
         voxel_size = p('voxel_size', 0.1).value
+        self.ground_z = p('ground_z', -0.1).value     # base_link から見た地面 (3D 表示で経路を床の高さに描く)
 
         self.lock = threading.Lock()
         self.map = None            # (meta, png)
@@ -215,6 +216,7 @@ class WebGoal(Node):
                              for name, c in self.costmaps.items()},
                 'voxels': {'version': self.voxels.version, 'count': self.voxels.count(),
                            'size': self.voxels.size},
+                'ground_z': self.ground_z,
             }
             if self.pose:
                 x, y, yaw, t, z = self.pose

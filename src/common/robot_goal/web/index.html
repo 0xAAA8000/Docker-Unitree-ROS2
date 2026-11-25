@@ -10,15 +10,18 @@
   --bg: #e9ecef; --panel: #ffffff; --fg: #1b2027; --muted: #5d6773; --line: #c9cfd6;
   --accent: #1769c2; --accent-fg: #ffffff; --stop: #c62828; --stop-fg: #ffffff;
   --cand: #e8590c; --goal: #2b8a3e; --robot: #1769c2; --plan: #1769c2; --warn: #b26a00;
+  --v-floor: #a9b4c0; --v-slope: #2f9e44; --v-obs: #d6336c; --v-none: #ced4da;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #101317; --panel: #1b2027; --fg: #e8ebef; --muted: #9aa4b1; --line: #343c46;
     --accent: #3d8bfd; --stop: #e5484d; --cand: #ff8a3d; --goal: #46c26a; --robot: #5aa9ff;
     --plan: #5aa9ff; --warn: #f0b429; color-scheme: dark;
+    --v-floor: #5c6773; --v-slope: #51cf66; --v-obs: #ff6b9a; --v-none: #3a414a;
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
   font: 15px/1.4 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
   overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
@@ -31,13 +34,22 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
 #status .bad { color: var(--stop); border-color: var(--stop); }
 #status .warn { color: var(--warn); border-color: var(--warn); }
 #goaltext { font-weight: 600; }
+#views { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: var(--panel);
+  padding: 6px max(12px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--line); }
+#views button { height: 34px; font-size: 13px; padding: 0 4px; }
 #stage { position: relative; flex: 1; min-height: 0; }
+#legend { position: absolute; left: 10px; bottom: 40px; display: flex; flex-direction: column; gap: 3px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 11px;
+  pointer-events: none; }
+#legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px;
+  vertical-align: -2px; border: 1px solid var(--line); }
 canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
-#hint { position: absolute; left: 12px; right: 12px; top: 10px; text-align: center; pointer-events: none;
+#hint { position: absolute; left: 12px; right: 74px; top: 10px; text-align: center; pointer-events: none;
   color: var(--muted); font-size: 13px; }
 #hint span { background: var(--panel); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); }
-#side { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 44px; display: flex; flex-direction: column; gap: 8px; }
-#side button { width: 52px; height: 44px; font-size: 13px; }
+#side { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 10px; display: flex; flex-direction: column; gap: 8px; }
+#side button { width: 52px; height: 44px; font-size: 13px; padding: 0; }
 #side #clearobs { height: 52px; font-size: 11px; line-height: 1.25; padding: 0; }
 #panel { background: var(--panel); border-top: 1px solid var(--line);
   padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
@@ -64,8 +76,16 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
     <span id="goaltext">目的地なし</span>
     <span id="detail"></span>
   </div>
+  <div id="views">
+    <button data-view="map" class="on" title="robot_map の 2D 地図">地図</button>
+    <button data-view="global" title="Nav2 の経路計画用の costmap">全体コスト</button>
+    <button data-view="local" title="Nav2 の経路追従用の costmap (車体の周り)">近くコスト</button>
+    <button data-view="3d" title="robot_map の 3D 地図 (見えている範囲)">3D</button>
+  </div>
   <div id="stage">
     <canvas id="cv"></canvas>
+    <canvas id="cv3" hidden></canvas>
+    <div id="legend" hidden></div>
     <div id="hint"><span id="hinttext">地図を待っています</span></div>
     <div id="side">
       <button id="follow" class="on" title="ロボットを画面の中心に保つ">追従</button>
@@ -97,8 +117,12 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
   const view = { cx: 0, cy: 0, s: 40 };
   let follow = true, fitted = false;
   let st = null;               // /api/state
-  let map = null;              // { img, meta }
-  let loadingVersion = -1;
+  // 2D の画像: 地図 (robot_map) と Nav2 の costmap 2 つ. 取りに行くのは表示中のものだけ
+  let viewName = 'map';        // map / global / local / 3d
+  const grids = { map: null, global: null, local: null };       // { img, meta }
+  const loading = { map: -1, global: -1, local: -1 };           // 取りに行っている版
+  const is2d = () => viewName !== '3d';
+  const gridMeta = (name) => !st ? null : name === 'map' ? st.map : (st.costmaps || {})[name] || null;
   let cand = null;             // { x, y, yaw | null }
   let dirty = true;
 
@@ -124,8 +148,9 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
   }
 
   function fitMap() {
-    if (!map) return;
-    const m = map.meta;
+    const g = grids[viewName];
+    if (!g) return;
+    const m = g.meta;
     // 観測済みの範囲に合わせる (格子は未知の余白を含んで広がるため)
     const [x0, y0, x1, y1] = m.known || [m.origin_x, m.origin_y,
       m.origin_x + m.width * m.resolution, m.origin_y + m.height * m.resolution];
@@ -160,11 +185,12 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
     const w = W(), h = H();
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = css('--bg'); ctx.fillRect(0, 0, w, h);
-    if (map) {
-      const m = map.meta;
+    const grid = grids[viewName];
+    if (grid) {
+      const m = grid.meta;
       const [x0, y0] = toScreen(m.origin_x, m.origin_y + m.height * m.resolution);
       ctx.imageSmoothingEnabled = view.s * m.resolution < 1;
-      ctx.drawImage(map.img, x0, y0, m.width * m.resolution * view.s, m.height * m.resolution * view.s);
+      ctx.drawImage(grid.img, x0, y0, m.width * m.resolution * view.s, m.height * m.resolution * view.s);
     }
     if (st && st.plan && st.plan.length > 1) {
       ctx.strokeStyle = css('--plan'); ctx.lineWidth = 3; ctx.setLineDash([]);
@@ -191,7 +217,10 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
     ctx.font = '12px system-ui, sans-serif'; ctx.fillText(meters + ' m', bx + 4, by - 7);
   }
 
-  function loop() { if (dirty) draw(); requestAnimationFrame(loop); }
+  function loop() {
+    if (is2d()) { if (dirty) draw(); } else render3d();
+    requestAnimationFrame(loop);
+  }
 
   // ---------- 表示の更新 ----------
   const GOAL_TEXT = {
@@ -218,16 +247,21 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
     if (g.status === 'active' && g.distance !== undefined) d = `残り ${g.distance.toFixed(1)} m` + (g.eta ? ` / 約 ${g.eta} 秒` : '');
     if (g.message) d = g.message;
     $('detail').textContent = d;
-    const hint = !st.map ? '地図を待っています (robot_map は起動している?)'
+    const hint = viewName === '3d'
+      ? (!st.voxels || !st.voxels.count ? '3D 地図を待っています (robot_map は起動している?)'
+        : '1 本指で回転、2 本指で拡大・移動 (目的地は 2D の表示で置く)')
+      : !gridMeta(viewName) ? (viewName === 'map' ? '地図を待っています (robot_map は起動している?)'
+        : 'costmap を待っています (Nav2 は起動している?)')
       : cand ? '印からドラッグすると到着時の向きを指定できます' : '';
     $('hinttext').textContent = hint;
     $('hint').hidden = !hint;
   }
 
-  async function loadMap(version) {
-    loadingVersion = version;
+  async function loadGrid(name, version) {
+    loading[name] = version;
     try {
-      const r = await fetch(api('/api/map.png?v=' + version), { cache: 'no-store' });
+      const path = name === 'map' ? '/api/map.png?v=' + version : `/api/costmap.png?name=${name}&v=${version}`;
+      const r = await fetch(api(path), { cache: 'no-store' });
       if (!r.ok) throw new Error(r.status);
       const h = (k) => parseFloat(r.headers.get('X-Map-' + k));
       const meta = { version: h('Version'), width: h('Width'), height: h('Height'), resolution: h('Resolution'),
@@ -238,12 +272,12 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
       const img = new Image();
       img.onload = () => {
         URL.revokeObjectURL(url);
-        map = { img, meta }; dirty = true;
-        if (!fitted) { fitted = true; if (!(follow && st && st.pose)) fitMap(); }
+        grids[name] = { img, meta }; dirty = true;
+        if (name === 'map' && !fitted) { fitted = true; if (!(follow && st && st.pose)) fitMap(); }
       };
       img.src = url;
     } catch (e) {
-      loadingVersion = -1;
+      loading[name] = -1;
     }
   }
 
@@ -259,7 +293,12 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
       else {
         st = await r.json();
         if (st.launcher_port) { launcherPort = st.launcher_port; $('modes').hidden = false; }
-        if (st.map && st.map.version !== loadingVersion) loadMap(st.map.version);
+        if (is2d()) {
+          const m = gridMeta(viewName);
+          if (m && m.version !== loading[viewName]) loadGrid(viewName, m.version);
+        } else {
+          update3d();
+        }
         if (follow && st.pose) { view.cx = st.pose.x; view.cy = st.pose.y; }
         updateStatus(true); updateCand(); dirty = true;
       }
@@ -286,7 +325,206 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
   function setFollow(on) {
     follow = on; $('follow').classList.toggle('on', on);
     if (on && st && st.pose) { view.cx = st.pose.x; view.cy = st.pose.y; }
+    if (on) followRobot3d(true);
     dirty = true;
+  }
+
+  // ---------- 表示の切り替え ----------
+  const LEGENDS = {
+    global: [['#1e1e1e', '障害物'], ['#d23228', 'ぶつかる (中心が入ると)'], ['#ff9c46', '離れたい (濃いほど近い)'],
+      ['#ffffff', '空き'], ['#bebebe', '未知']],
+    '3d': [['--v-floor', '床'], ['--v-slope', '坂'], ['--v-obs', '障害物'], ['--v-none', '未分類']],
+  };
+  LEGENDS.local = LEGENDS.global;
+
+  function setView(name) {
+    viewName = name;
+    document.querySelectorAll('#views button').forEach((b) => b.classList.toggle('on', b.dataset.view === name));
+    $('cv').hidden = !is2d(); $('cv3').hidden = is2d();
+    const items = LEGENDS[name];
+    $('legend').hidden = !items;
+    $('legend').innerHTML = '';
+    for (const [c, label] of items || []) {
+      const row = document.createElement('div'), i = document.createElement('i');
+      i.style.background = c.startsWith('--') ? css(c) : c;
+      row.append(i, label); $('legend').append(row);
+    }
+    if (is2d()) {
+      const m = gridMeta(name);
+      if (m && m.version !== loading[name]) loadGrid(name, m.version);
+      dirty = true;
+    } else {
+      init3d();
+    }
+    if (st) updateStatus(true);
+  }
+  document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+
+  // ---------- 3D (robot_map のボクセル. Three.js は最初に 3D を開いたときに読み込む) ----------
+  let T = null;                // { THREE, renderer, scene, camera, controls, points, robot, plan, goal }
+  let t3loading = false, need3 = true;
+  const vox = new Map();       // キー -> 分類
+  let voxVer = 0, voxSize = 0.1, voxLoading = false;
+  const pointSize = (size, fovDeg) => size / Math.tan(fovDeg * Math.PI / 360);
+  const vkey = (ix, iy, iz) => ((ix + 32768) * 65536 + (iy + 32768)) * 65536 + (iz + 32768);
+
+  async function init3d() {
+    if (T || t3loading) { resize3d(); return; }
+    t3loading = true;
+    $('hinttext').textContent = '3D 表示を準備しています…'; $('hint').hidden = false;
+    try {
+      const THREE = await import('./static/three.module.min.js');
+      const { OrbitControls } = await import('./static/OrbitControls.js');
+      const canvas = $('cv3');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
+      camera.up.set(0, 0, 1);                      // ROS は z が上
+      const controls = new OrbitControls(camera, canvas);
+      controls.enableDamping = false;
+      controls.addEventListener('change', () => { need3 = true; });
+      controls.addEventListener('end', () => {     // 2 本指で動かして車両から離れたら追従を切る
+        if (follow && st && st.pose && Math.hypot(controls.target.x - st.pose.x, controls.target.y - st.pose.y) > 0.05) setFollow(false);
+      });
+      const geom = new THREE.BufferGeometry();
+      // 点の大きさ: Three.js は視野角 90° のときに size [m] で描くので, 視野角に合わせて大きくし, ボクセルの幅にする
+      const points = new THREE.Points(geom, new THREE.PointsMaterial({ size: pointSize(voxSize, 60), sizeAttenuation: true, vertexColors: true }));
+      scene.add(points);
+      const robot = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.45, 16), new THREE.MeshBasicMaterial({ color: css('--robot') }));
+      robot.geometry.rotateZ(-Math.PI / 2);        // 先端を +x (車両の前) に向ける
+      scene.add(robot);
+      const plan = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: css('--plan') }));
+      scene.add(plan);
+      const goal = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), new THREE.MeshBasicMaterial({ color: css('--goal') }));
+      goal.visible = false; scene.add(goal);
+      T = { THREE, renderer, scene, camera, controls, points, robot, plan, goal };
+      applyTheme3d();
+      resize3d();
+      resetCamera3d();
+      update3d();
+    } catch (e) {
+      $('hinttext').textContent = '3D 表示を使えません (WebGL に対応していないブラウザ?)'; $('hint').hidden = false;
+    } finally {
+      t3loading = false;
+    }
+  }
+
+  function applyTheme3d() {
+    if (!T) return;
+    T.scene.background = new T.THREE.Color(css('--bg'));
+    need3 = true;
+  }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme3d(); rebuildPoints(); });
+
+  function resize3d() {
+    if (!T) return;
+    const c = $('cv3'), w = c.clientWidth || 1, h = c.clientHeight || 1;
+    T.renderer.setSize(w, h, false);
+    T.camera.aspect = w / h; T.camera.updateProjectionMatrix();
+    need3 = true;
+  }
+  window.addEventListener('resize', resize3d);
+
+  function robotPos() {
+    const p = st && st.pose;
+    return p ? [p.x, p.y, p.z || 0] : [0, 0, 0];
+  }
+
+  function resetCamera3d() {
+    if (!T) return;
+    const [x, y, z] = robotPos(), yaw = st && st.pose ? st.pose.yaw : 0;
+    T.controls.target.set(x, y, z);
+    // 車両の斜め後ろ上から見る
+    T.camera.position.set(x - 4 * Math.cos(yaw), y - 4 * Math.sin(yaw), z + 3);
+    T.controls.update();
+    need3 = true;
+  }
+
+  function followRobot3d(force) {
+    if (!T || !(follow || force) || !st || !st.pose) return;
+    const [x, y, z] = robotPos();
+    const d = new T.THREE.Vector3(x, y, z).sub(T.controls.target);
+    if (d.lengthSq() < 1e-8) return;
+    T.camera.position.add(d); T.controls.target.add(d); T.controls.update();
+    need3 = true;
+  }
+
+  function update3d() {
+    if (!T || !st) return;
+    const THREE = T.THREE;
+    if (st.pose) {
+      const [x, y, z] = robotPos();
+      T.robot.position.set(x, y, z); T.robot.rotation.set(0, 0, st.pose.yaw);
+      T.robot.visible = true;
+    } else {
+      T.robot.visible = false;
+    }
+    const gz = (st.pose ? st.pose.z || 0 : 0) + (st.ground_z || 0) + 0.03;   // 経路は床の少し上に描く
+    const pts = (st.plan || []).flatMap(([x, y]) => [x, y, gz]);
+    T.plan.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    T.plan.geometry.computeBoundingSphere();
+    const g = st.goal;
+    T.goal.visible = !!(g && (g.status === 'active' || g.status === 'sending'));
+    if (T.goal.visible) T.goal.position.set(g.x, g.y, gz);
+    followRobot3d(false);
+    if (st.voxels && st.voxels.version !== voxVer) loadVoxels();
+    need3 = true;
+  }
+
+  async function loadVoxels() {
+    if (voxLoading) return;
+    voxLoading = true;
+    try {
+      const r = await fetch(api('/api/voxels?since=' + voxVer), { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      const buf = await r.arrayBuffer(), dv = new DataView(buf);
+      if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'VOX1') throw new Error('形式');
+      const version = dv.getUint32(4, true), size = dv.getFloat32(8, true), full = dv.getUint8(12);
+      const na = dv.getUint32(16, true), nr = dv.getUint32(20, true);
+      const add = new Int16Array(buf.slice(24, 24 + 6 * na));
+      const lab = new Uint8Array(buf, 24 + 6 * na, na);
+      let o = 24 + 6 * na + na; o += (4 - o % 4) % 4;
+      const rem = new Int16Array(buf.slice(o, o + 6 * nr));
+      if (full) vox.clear();
+      for (let i = 0; i < na; i++) vox.set(vkey(add[3 * i], add[3 * i + 1], add[3 * i + 2]), lab[i]);
+      for (let i = 0; i < nr; i++) vox.delete(vkey(rem[3 * i], rem[3 * i + 1], rem[3 * i + 2]));
+      voxVer = version;
+      if (size !== voxSize) { voxSize = size; if (T) T.points.material.size = pointSize(size, T.camera.fov); }
+      rebuildPoints();
+    } catch (e) {
+      voxVer = 0;      // 次は全体を取り直す
+    } finally {
+      voxLoading = false;
+    }
+  }
+
+  function rebuildPoints() {
+    if (!T) return;
+    const THREE = T.THREE, n = vox.size;
+    const pos = new Float32Array(3 * n), col = new Float32Array(3 * n);
+    const pal = ['--v-floor', '--v-slope', '--v-obs'].map((v) => new THREE.Color(css(v)));
+    const none = new THREE.Color(css('--v-none'));
+    let i = 0;
+    for (const [k, l] of vox) {
+      const iz = k % 65536 - 32768, t = Math.floor(k / 65536);
+      const iy = t % 65536 - 32768, ix = Math.floor(t / 65536) - 32768;
+      pos[3 * i] = (ix + 0.5) * voxSize; pos[3 * i + 1] = (iy + 0.5) * voxSize; pos[3 * i + 2] = (iz + 0.5) * voxSize;
+      const c = pal[l] || none;
+      col[3 * i] = c.r; col[3 * i + 1] = c.g; col[3 * i + 2] = c.b;
+      i++;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    T.points.geometry.dispose(); T.points.geometry = geom;
+    need3 = true;
+  }
+
+  function render3d() {
+    if (!T || !need3) return;
+    need3 = false;
+    T.renderer.render(T.scene, T.camera);
   }
 
   cv.addEventListener('pointerdown', (e) => {
@@ -362,7 +600,9 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: va
 
   $('follow').addEventListener('click', () => setFollow(!follow));
   $('modes').addEventListener('click', () => { location.href = launcherUrl(); });
-  $('fit').addEventListener('click', () => { setFollow(false); fitMap(); });
+  $('fit').addEventListener('click', () => {
+    if (is2d()) { setFollow(false); fitMap(); } else resetCamera3d();
+  });
   $('clear').addEventListener('click', () => { cand = null; updateCand(); dirty = true; if (st) updateStatus(true); });
 
   async function post(path, body) {
