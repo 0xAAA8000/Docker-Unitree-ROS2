@@ -28,6 +28,7 @@ nodes:
     obstacles_out: /lidar_obstacles
     clear_out: /lidar_clear
     slope_out: /lidar_slope       # 坂として障害物から外した点 (rviz での確認用)
+    labeled_out: /lidar_labeled   # 床・坂・障害物の分類の値 (label) を付けた点 (robot_map の 3D 地図の色分け)
     # Nav2 のクリア用に床の点を LiDAR から水平方向にずらす距離 [m] (0 で無効).
     # 床が見えているセルに残った誤検知の障害物を消す. costmap の 1 セル (0.05 m) より大きくする
     ground_clear_extend: 0.10

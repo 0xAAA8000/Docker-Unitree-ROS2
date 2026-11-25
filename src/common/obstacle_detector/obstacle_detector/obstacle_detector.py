@@ -4,6 +4,10 @@
     --(自車体・近すぎる点を除き, 地面からの高さで抽出し, 坂を除く)--> /lidar_obstacles  (Nav2 の障害物)
     --(床と坂の点を少し奥へずらす)----------------------------------> /lidar_clear      (Nav2 のクリア用)
     --(坂として障害物から外した点)----------------------------------> /lidar_slope      (確認用)
+    --(床・坂・障害物の点に分類の値 label を付けたもの)--------------> /lidar_labeled    (robot_map の色分け)
+
+分類の値 (/lidar_labeled の label フィールド, uint8): LABEL_FLOOR=0 床, LABEL_SLOPE=1 坂, LABEL_OBSTACLE=2 障害物.
+車体より高い点 (obstacle_max_height 以上), 自車体の点, 近すぎる点は含めない. 座標は入力と同じ LiDAR 座標.
 
 判定は base_link 座標で行う. パラメータは real.launch.py (sim は sim_gazebo の bridge.launch.py) が
 robot_config から渡す. LiDAR の取付位置・姿勢と自車体の箱は lidar_bridge と同じ値. 配信する点の座標は LiDAR 座標のまま.
@@ -43,6 +47,31 @@ from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
 
 from lidar_bridge.lidar_bridge_node import cloud_to_array, make_cloud, rotation_rpy
+from sensor_msgs.msg import PointField
+
+LABEL_FLOOR, LABEL_SLOPE, LABEL_OBSTACLE = 0, 1, 2
+_LABELED_DTYPE = np.dtype({'names': ['x', 'y', 'z', 'label'],
+                           'formats': ['<f4', '<f4', '<f4', 'u1'],
+                           'offsets': [0, 4, 8, 12], 'itemsize': 16})
+
+
+def labeled_cloud(src, xyz, labels):
+    """x y z (float32) と label (uint8) の点群. header は src のもの."""
+    pts = np.zeros(len(xyz), _LABELED_DTYPE)
+    pts['x'], pts['y'], pts['z'] = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+    pts['label'] = labels
+    out = PointCloud2()
+    out.header = src.header
+    out.fields = [PointField(name=n, offset=o, datatype=d, count=1)
+                  for n, o, d in (('x', 0, 7), ('y', 4, 7), ('z', 8, 7), ('label', 12, 2))]
+    out.is_bigendian = False
+    out.point_step = 16
+    out.height = 1
+    out.width = len(pts)
+    out.row_step = 16 * len(pts)
+    out.data = pts.tobytes()
+    out.is_dense = True
+    return out
 
 
 class ObstacleDetector(Node):
@@ -54,6 +83,7 @@ class ObstacleDetector(Node):
         obstacles_out = p('obstacles_out', '/lidar_obstacles').value
         clear_out = p('clear_out', '/lidar_clear').value
         slope_out = p('slope_out', '/lidar_slope').value
+        labeled_out = p('labeled_out', '/lidar_labeled').value
 
         # base_link から見た LiDAR の取付位置 [m] と姿勢 [deg] (lidar_bridge と同じ値)
         t = [p('lidar_x', 0.2).value, p('lidar_y', 0.0).value, p('lidar_z', 0.25).value]
@@ -81,6 +111,7 @@ class ObstacleDetector(Node):
         self.pub_obs = self.create_publisher(PointCloud2, obstacles_out, 10)
         self.pub_clear = self.create_publisher(PointCloud2, clear_out, 10)
         self.pub_slope = self.create_publisher(PointCloud2, slope_out, 10)
+        self.pub_labeled = self.create_publisher(PointCloud2, labeled_out, 10)
         self.create_subscription(PointCloud2, cloud_in, self.on_cloud, 10)
         self.get_logger().info(
             f'{cloud_in} -> {obstacles_out}, {clear_out}  height {self.obstacle_min}..{self.obstacle_max} m  '
@@ -99,6 +130,7 @@ class ObstacleDetector(Node):
         h = base[:, 2] - self.ground_z              # 地面からの高さ
         obs = keep & (h > self.obstacle_min) & (h < self.obstacle_max)
         floor = h <= self.obstacle_min              # 床 (クリア用に奥へずらす点)
+        slope = np.zeros(len(h), dtype=bool)
         if self.slope_filter:
             slope = obs & self.traversable(base, h, keep & (h < self.obstacle_max))
             obs &= ~slope
@@ -108,6 +140,13 @@ class ObstacleDetector(Node):
         self.pub_obs.publish(make_cloud(msg, pts[obs], msg.header.frame_id))
         if self.pub_clear.get_subscription_count() > 0:
             self.pub_clear.publish(self.clear_cloud(msg, pts, base, keep, floor))
+        if self.pub_labeled.get_subscription_count() > 0:
+            labels = np.full(len(h), 255, np.uint8)
+            labels[keep & floor & ~slope] = LABEL_FLOOR
+            labels[slope] = LABEL_SLOPE
+            labels[obs] = LABEL_OBSTACLE
+            sel = labels != 255
+            self.pub_labeled.publish(labeled_cloud(msg, xyz[sel], labels[sel]))
 
     def traversable(self, base, h, cand):
         """各点が「床から坂を伝ってたどり着けるマス」にあるか (ファイル先頭の説明)."""
