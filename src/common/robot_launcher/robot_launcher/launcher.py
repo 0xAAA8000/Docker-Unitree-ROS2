@@ -372,9 +372,6 @@ class Launcher(Node):
                 else:
                     st = 'pending'
                 status.append({'id': s, 'name': STEP_NAMES[s], 'status': st})
-            stamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(self.mode_started_wall))
-            self.map_file = os.path.join(self.map_dir, f'{stamp}_{mode}.pcd')
-            cmd.append(f'map_save:={self.map_file}')
             calib = selected_calibration(self.calib_dir)
             return {
                 'phase': self.phase,
