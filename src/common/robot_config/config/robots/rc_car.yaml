@@ -32,7 +32,7 @@ nodes:
     obstacle_max_height: 0.35     # 地面からこの高さ未満を障害物とする (これより上は車体に当たらない)
     # LiDAR からの最小距離. 車体の点は self_box_* で除くので小さくしてよい.
     # 0.30 だと車体の前 0.17 m, 横 0.26 m 以内の障害物が見えなかった
-    obstacle_range_min: 0.08
+    obstacle_range_min: 0.20
 
   # Point-LIO (機種ごとの設定 point_lio_ros2/config/unilidar_l1.yaml に重ねる)
   point_lio:
